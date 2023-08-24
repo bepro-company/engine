@@ -8,8 +8,11 @@
 #include <string>
 
 #include "flutter/fml/macros.h"
+#include "impeller/core/capture.h"
 #include "impeller/core/formats.h"
+#include "impeller/core/host_buffer.h"
 #include "impeller/renderer/capabilities.h"
+#include "impeller/renderer/pool.h"
 
 namespace impeller {
 
@@ -158,10 +161,18 @@ class Context {
   ///
   virtual void Shutdown() = 0;
 
+  //----------------------------------------------------------------------------
+  /// @brief Accessor for a pool of HostBuffers.
+  Pool<HostBuffer>& GetHostBufferPool() const { return host_buffer_pool_; }
+
+  CaptureContext capture;
+
  protected:
   Context();
 
  private:
+  mutable Pool<HostBuffer> host_buffer_pool_ = Pool<HostBuffer>(1'000'000);
+
   FML_DISALLOW_COPY_AND_ASSIGN(Context);
 };
 
