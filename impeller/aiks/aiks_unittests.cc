@@ -2056,6 +2056,7 @@ TEST_P(AiksTest, SaveLayerFiltersScaleWithTransform) {
   ASSERT_TRUE(OpenPlaygroundHere(canvas.EndRecordingAsPicture()));
 }
 
+#if IMPELLER_ENABLE_3D
 TEST_P(AiksTest, SceneColorSource) {
   // Load up the scene.
   auto mapping =
@@ -2096,6 +2097,7 @@ TEST_P(AiksTest, SceneColorSource) {
 
   ASSERT_TRUE(OpenPlaygroundHere(callback));
 }
+#endif  // IMPELLER_ENABLE_3D
 
 TEST_P(AiksTest, PaintWithFilters) {
   // validate that a paint with a color filter "HasFilters", no other filters
@@ -3271,6 +3273,41 @@ TEST_P(AiksTest, PipelineBlendSingleParameter) {
   ASSERT_TRUE(OpenPlaygroundHere(canvas.EndRecordingAsPicture()));
 }
 
+TEST_P(AiksTest, ClippedBlurFilterRendersCorrectlyInteractive) {
+  auto callback = [&](AiksContext& renderer) -> std::optional<Picture> {
+    auto point = IMPELLER_PLAYGROUND_POINT(Point(400, 400), 20, Color::Green());
+
+    Canvas canvas;
+    canvas.Translate(point - Point(400, 400));
+    Paint paint;
+    paint.mask_blur_descriptor = Paint::MaskBlurDescriptor{
+        .style = FilterContents::BlurStyle::kNormal,
+        .sigma = Radius{120 * 3},
+    };
+    paint.color = Color::Red();
+    PathBuilder builder{};
+    builder.AddRect(Rect::MakeLTRB(0, 0, 800, 800));
+    canvas.DrawPath(builder.TakePath(), paint);
+    return canvas.EndRecordingAsPicture();
+  };
+  ASSERT_TRUE(OpenPlaygroundHere(callback));
+}
+
+TEST_P(AiksTest, ClippedBlurFilterRendersCorrectly) {
+  Canvas canvas;
+  canvas.Translate(Point(0, -400));
+  Paint paint;
+  paint.mask_blur_descriptor = Paint::MaskBlurDescriptor{
+      .style = FilterContents::BlurStyle::kNormal,
+      .sigma = Radius{120 * 3},
+  };
+  paint.color = Color::Red();
+  PathBuilder builder{};
+  builder.AddRect(Rect::MakeLTRB(0, 0, 800, 800));
+  canvas.DrawPath(builder.TakePath(), paint);
+  ASSERT_TRUE(OpenPlaygroundHere(canvas.EndRecordingAsPicture()));
+}
+
 TEST_P(AiksTest, CaptureContext) {
   auto capture_context = CaptureContext::MakeAllowlist({"TestDocument"});
 
@@ -3294,6 +3331,10 @@ TEST_P(AiksTest, CaptureContext) {
     return canvas.EndRecordingAsPicture();
   };
   OpenPlaygroundHere(callback);
+}
+
+TEST_P(AiksTest, CaptureInactivatedByDefault) {
+  ASSERT_FALSE(GetContext()->capture.IsActive());
 }
 
 }  // namespace testing
