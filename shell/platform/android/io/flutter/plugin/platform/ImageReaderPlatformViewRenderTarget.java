@@ -98,7 +98,7 @@ public class ImageReaderPlatformViewRenderTarget implements PlatformViewRenderTa
       // No size change.
       return;
     }
-    closeReader();
+//    closeReader();
     bufferWidth = width;
     bufferHeight = height;
     this.reader = createImageReader();

@@ -130,7 +130,6 @@ class VirtualDisplayController {
   public void resize(final int width, final int height, final Runnable onNewSizeFrameAvailable) {
     virtualDisplay.resize(width, height, densityDpi);
     final View embeddedView = getView();
-    renderTarget.resize(width, height);
     embeddedView.postDelayed(onNewSizeFrameAvailable, 128);
 
 //    boolean isFocused = getView().isFocused();
