@@ -5,7 +5,7 @@
 name: scenario_app
 publish_to: none
 environment:
-  sdk: '>=3.0.0-0 <4.0.0'
+  sdk: '>=3.2.0-0 <4.0.0'
 
 # Do not add any dependencies that require more than what is provided in
 # //third_party/dart/pkg, //third_party/dart/third_party/pkg, or
@@ -29,8 +29,10 @@ dependency_overrides:
     path: ../../../third_party/dart/third_party/pkg/collection
   crypto:
     path: ../../../third_party/dart/third_party/pkg/crypto
+  engine_repo_tools:
+    path: ../../tools/pkg/engine_repo_tools
   file:
-    path: ../../../third_party/pkg/file/packages/file
+    path: ../../../third_party/dart/third_party/pkg/file/packages/file
   meta:
     path: ../../../third_party/dart/pkg/meta
   path:

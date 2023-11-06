@@ -6,7 +6,7 @@
 
 #include "flutter/display_list/dl_op_receiver.h"
 #include "flutter/fml/macros.h"
-#include "impeller/aiks/canvas.h"
+#include "impeller/aiks/canvas_type.h"
 #include "impeller/aiks/paint.h"
 
 namespace impeller {
@@ -25,9 +25,6 @@ class DlDispatcher final : public flutter::DlOpReceiver {
 
   // |flutter::DlOpReceiver|
   void setAntiAlias(bool aa) override;
-
-  // |flutter::DlOpReceiver|
-  void setDither(bool dither) override;
 
   // |flutter::DlOpReceiver|
   void setDrawStyle(flutter::DlDrawStyle style) override;
@@ -172,13 +169,13 @@ class DlDispatcher final : public flutter::DlOpReceiver {
                     flutter::DlBlendMode dl_mode) override;
 
   // |flutter::DlOpReceiver|
-  void drawImage(const sk_sp<flutter::DlImage>& image,
+  void drawImage(const sk_sp<flutter::DlImage> image,
                  const SkPoint point,
                  flutter::DlImageSampling sampling,
                  bool render_with_attributes) override;
 
   // |flutter::DlOpReceiver|
-  void drawImageRect(const sk_sp<flutter::DlImage>& image,
+  void drawImageRect(const sk_sp<flutter::DlImage> image,
                      const SkRect& src,
                      const SkRect& dst,
                      flutter::DlImageSampling sampling,
@@ -186,14 +183,14 @@ class DlDispatcher final : public flutter::DlOpReceiver {
                      SrcRectConstraint constraint) override;
 
   // |flutter::DlOpReceiver|
-  void drawImageNine(const sk_sp<flutter::DlImage>& image,
+  void drawImageNine(const sk_sp<flutter::DlImage> image,
                      const SkIRect& center,
                      const SkRect& dst,
                      flutter::DlFilterMode filter,
                      bool render_with_attributes) override;
 
   // |flutter::DlOpReceiver|
-  void drawAtlas(const sk_sp<flutter::DlImage>& atlas,
+  void drawAtlas(const sk_sp<flutter::DlImage> atlas,
                  const SkRSXform xform[],
                  const SkRect tex[],
                  const flutter::DlColor colors[],
@@ -204,13 +201,18 @@ class DlDispatcher final : public flutter::DlOpReceiver {
                  bool render_with_attributes) override;
 
   // |flutter::DlOpReceiver|
-  void drawDisplayList(const sk_sp<flutter::DisplayList>& display_list,
+  void drawDisplayList(const sk_sp<flutter::DisplayList> display_list,
                        SkScalar opacity) override;
 
   // |flutter::DlOpReceiver|
-  void drawTextBlob(const sk_sp<SkTextBlob>& blob,
+  void drawTextBlob(const sk_sp<SkTextBlob> blob,
                     SkScalar x,
                     SkScalar y) override;
+
+  // |flutter::DlOpReceiver|
+  void drawTextFrame(const std::shared_ptr<impeller::TextFrame>& text_frame,
+                     SkScalar x,
+                     SkScalar y) override;
 
   // |flutter::DlOpReceiver|
   void drawShadow(const SkPath& path,
@@ -221,10 +223,12 @@ class DlDispatcher final : public flutter::DlOpReceiver {
 
  private:
   Paint paint_;
-  Canvas canvas_;
+  CanvasType canvas_;
   Matrix initial_matrix_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(DlDispatcher);
+  DlDispatcher(const DlDispatcher&) = delete;
+
+  DlDispatcher& operator=(const DlDispatcher&) = delete;
 };
 
 }  // namespace impeller

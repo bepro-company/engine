@@ -69,7 +69,7 @@ class PlatformConfigurationClient {
   /// @brief      Updates the client's rendering on the GPU with the newly
   ///             provided Scene.
   ///
-  virtual void Render(Scene* scene) = 0;
+  virtual void Render(int64_t view_id, Scene* scene) = 0;
 
   //--------------------------------------------------------------------------
   /// @brief      Receives an updated semantics tree from the Framework.
@@ -206,6 +206,17 @@ class PlatformConfigurationClient {
   ///                              library to load.
   ///
   virtual void RequestDartDeferredLibrary(intptr_t loading_unit_id) = 0;
+
+  //--------------------------------------------------------------------------
+  /// @brief      Invoked when a listener is registered on a platform channel.
+  ///
+  /// @param[in]  name             The name of the platform channel to which a
+  ///                              listener has been registered or cleared.
+  ///
+  /// @param[in]  listening        Whether the listener has been set (true) or
+  ///                              cleared (false).
+  ///
+  virtual void SendChannelUpdate(std::string name, bool listening) = 0;
 
   //--------------------------------------------------------------------------
   /// @brief      Synchronously invokes platform-specific APIs to apply the
@@ -546,7 +557,7 @@ class PlatformConfigurationNativeApi {
 
   static void ScheduleFrame();
 
-  static void Render(Scene* scene);
+  static void Render(int64_t view_id, Scene* scene);
 
   static void UpdateSemantics(SemanticsUpdate* update);
 
@@ -570,6 +581,8 @@ class PlatformConfigurationNativeApi {
 
   static void RespondToPlatformMessage(int response_id,
                                        const tonic::DartByteData& data);
+
+  static void SendChannelUpdate(const std::string& name, bool listening);
 
   //--------------------------------------------------------------------------
   /// @brief      Requests the Dart VM to adjusts the GC heuristics based on

@@ -5,6 +5,7 @@
 #include "impeller/renderer/backend/vulkan/pipeline_library_vk.h"
 
 #include <chrono>
+#include <cstdint>
 #include <optional>
 #include <sstream>
 
@@ -75,8 +76,9 @@ static vk::AttachmentDescription CreatePlaceholderAttachmentDescription(
 /// spec:
 /// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap8.html#renderpass-compatibility
 ///
-static vk::UniqueRenderPass CreateRenderPass(const vk::Device& device,
-                                             const PipelineDescriptor& desc) {
+static vk::UniqueRenderPass CreateCompatRenderPassForPipeline(
+    const vk::Device& device,
+    const PipelineDescriptor& desc) {
   std::vector<vk::AttachmentDescription> attachments;
 
   std::vector<vk::AttachmentReference> color_refs;
@@ -127,6 +129,13 @@ static vk::UniqueRenderPass CreateRenderPass(const vk::Device& device,
                    << desc.GetLabel() << "'. Error: " << vk::to_string(result);
     return {};
   }
+
+  // This pass is not used with the render pass. It is only necessary to tell
+  // Vulkan the expected render pass layout. The actual pass will be created
+  // later during render pass setup and will need to be compatible with this
+  // one.
+  ContextVK::SetDebugName(device, pass.get(),
+                          "Compat Render Pass: " + desc.GetLabel());
 
   return std::move(pass);
 }
@@ -332,7 +341,8 @@ std::unique_ptr<PipelineVK> PipelineLibraryVK::CreatePipeline(
     return nullptr;
   }
 
-  auto render_pass = CreateRenderPass(strong_device->GetDevice(), desc);
+  auto render_pass =
+      CreateCompatRenderPassForPipeline(strong_device->GetDevice(), desc);
   if (render_pass) {
     pipeline_info.setBasePipelineHandle(VK_NULL_HANDLE);
     pipeline_info.setSubpass(0);

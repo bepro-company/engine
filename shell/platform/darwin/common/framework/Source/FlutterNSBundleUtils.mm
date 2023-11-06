@@ -8,6 +8,9 @@
 
 FLUTTER_ASSERT_ARC
 
+const NSString* kDefaultAssetPath = @"Frameworks/App.framework/flutter_assets";
+static NSString* GetFlutterAssetsPathFromBundle(NSBundle* bundle, NSString* relativeAssetsPath);
+
 NSBundle* FLTFrameworkBundleInternal(NSString* flutterFrameworkBundleID, NSURL* searchURL) {
   NSDirectoryEnumerator<NSURL*>* frameworkEnumerator = [NSFileManager.defaultManager
                  enumeratorAtURL:searchURL
@@ -27,7 +30,7 @@ NSBundle* FLTFrameworkBundleInternal(NSString* flutterFrameworkBundleID, NSURL* 
 }
 
 NSBundle* FLTGetApplicationBundle() {
-  NSBundle* mainBundle = [NSBundle mainBundle];
+  NSBundle* mainBundle = NSBundle.mainBundle;
   // App extension bundle is in <AppName>.app/PlugIns/Extension.appex.
   if ([mainBundle.bundleURL.pathExtension isEqualToString:@"appex"]) {
     // Up two levels.
@@ -46,18 +49,33 @@ NSBundle* FLTFrameworkBundleWithIdentifier(NSString* flutterFrameworkBundleID) {
     flutterFrameworkBundle = [NSBundle bundleWithIdentifier:flutterFrameworkBundleID];
   }
   if (flutterFrameworkBundle == nil) {
-    flutterFrameworkBundle = [NSBundle mainBundle];
+    flutterFrameworkBundle = NSBundle.mainBundle;
   }
   return flutterFrameworkBundle;
 }
 
-NSURL* FLTAssetsURLFromBundle(NSBundle* bundle) {
-  NSString* assetsPathFromInfoPlist = [bundle objectForInfoDictionaryKey:@"FLTAssetsPath"];
-  NSString* flutterAssetsPath = assetsPathFromInfoPlist ?: @"flutter_assets";
-  NSURL* assets = [bundle URLForResource:flutterAssetsPath withExtension:nil];
+NSString* FLTAssetPath(NSBundle* bundle) {
+  return [bundle objectForInfoDictionaryKey:@"FLTAssetsPath"] ?: kDefaultAssetPath;
+}
 
-  if ([assets checkResourceIsReachableAndReturnError:NULL]) {
-    return assets;
+NSString* FLTAssetsPathFromBundle(NSBundle* bundle) {
+  NSString* relativeAssetsPath = FLTAssetPath(bundle);
+  NSString* flutterAssetsPath = GetFlutterAssetsPathFromBundle(bundle, relativeAssetsPath);
+  if (flutterAssetsPath.length == 0) {
+    flutterAssetsPath = GetFlutterAssetsPathFromBundle(NSBundle.mainBundle, relativeAssetsPath);
   }
-  return nil;
+  return flutterAssetsPath;
+}
+
+static NSString* GetFlutterAssetsPathFromBundle(NSBundle* bundle, NSString* relativeAssetsPath) {
+  // Use the raw path solution so that asset path can be returned from unloaded bundles.
+  // See https://github.com/flutter/engine/pull/46073
+  NSString* assetsPath = [bundle pathForResource:relativeAssetsPath ofType:nil];
+  if (assetsPath.length == 0) {
+    // In app extension, using full relative path (kDefaultAssetPath)
+    // returns nil when the app bundle is not loaded. Try to use
+    // the sub folder name, which can successfully return a valid path.
+    assetsPath = [bundle pathForResource:@"flutter_assets" ofType:nil];
+  }
+  return assetsPath;
 }

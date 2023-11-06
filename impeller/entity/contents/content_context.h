@@ -63,8 +63,6 @@
 #include "impeller/entity/yuv_to_rgb_filter.vert.h"
 
 #include "impeller/entity/gaussian_blur.vert.h"
-#include "impeller/entity/gaussian_blur_alpha_decal.frag.h"
-#include "impeller/entity/gaussian_blur_alpha_nodecal.frag.h"
 #include "impeller/entity/gaussian_blur_noalpha_decal.frag.h"
 #include "impeller/entity/gaussian_blur_noalpha_nodecal.frag.h"
 
@@ -158,12 +156,6 @@ using PositionUVPipeline =
     RenderPipelineT<TextureFillVertexShader, TiledTextureFillFragmentShader>;
 using TiledTexturePipeline =
     RenderPipelineT<TextureFillVertexShader, TiledTextureFillFragmentShader>;
-using GaussianBlurAlphaDecalPipeline =
-    RenderPipelineT<GaussianBlurVertexShader,
-                    GaussianBlurAlphaDecalFragmentShader>;
-using GaussianBlurAlphaPipeline =
-    RenderPipelineT<GaussianBlurVertexShader,
-                    GaussianBlurAlphaNodecalFragmentShader>;
 using GaussianBlurDecalPipeline =
     RenderPipelineT<GaussianBlurVertexShader,
                     GaussianBlurNoalphaDecalFragmentShader>;
@@ -316,13 +308,14 @@ struct ContentContextOptions {
   PixelFormat color_attachment_pixel_format = PixelFormat::kUnknown;
   bool has_stencil_attachment = true;
   bool wireframe = false;
+  bool is_for_rrect_blur_clear = false;
 
   struct Hash {
     constexpr std::size_t operator()(const ContentContextOptions& o) const {
-      return fml::HashCombine(o.sample_count, o.blend_mode, o.stencil_compare,
-                              o.stencil_operation, o.primitive_type,
-                              o.color_attachment_pixel_format,
-                              o.has_stencil_attachment, o.wireframe);
+      return fml::HashCombine(
+          o.sample_count, o.blend_mode, o.stencil_compare, o.stencil_operation,
+          o.primitive_type, o.color_attachment_pixel_format,
+          o.has_stencil_attachment, o.wireframe, o.is_for_rrect_blur_clear);
     }
   };
 
@@ -337,7 +330,8 @@ struct ContentContextOptions {
              lhs.color_attachment_pixel_format ==
                  rhs.color_attachment_pixel_format &&
              lhs.has_stencil_attachment == rhs.has_stencil_attachment &&
-             lhs.wireframe == rhs.wireframe;
+             lhs.wireframe == rhs.wireframe &&
+             lhs.is_for_rrect_blur_clear == rhs.is_for_rrect_blur_clear;
     }
   };
 
@@ -351,7 +345,8 @@ class ContentContext {
  public:
   explicit ContentContext(
       std::shared_ptr<Context> context,
-      std::shared_ptr<TypographerContext> typographer_context);
+      std::shared_ptr<TypographerContext> typographer_context,
+      std::shared_ptr<RenderTargetAllocator> render_target_allocator = nullptr);
 
   ~ContentContext();
 
@@ -451,16 +446,6 @@ class ContentContext {
   std::shared_ptr<Pipeline<PipelineDescriptor>> GetTiledTexturePipeline(
       ContentContextOptions opts) const {
     return GetPipeline(tiled_texture_pipelines_, opts);
-  }
-
-  std::shared_ptr<Pipeline<PipelineDescriptor>>
-  GetGaussianBlurAlphaDecalPipeline(ContentContextOptions opts) const {
-    return GetPipeline(gaussian_blur_alpha_decal_pipelines_, opts);
-  }
-
-  std::shared_ptr<Pipeline<PipelineDescriptor>> GetGaussianBlurAlphaPipeline(
-      ContentContextOptions opts) const {
-    return GetPipeline(gaussian_blur_alpha_nodecal_pipelines_, opts);
   }
 
   std::shared_ptr<Pipeline<PipelineDescriptor>> GetGaussianBlurDecalPipeline(
@@ -736,11 +721,61 @@ class ContentContext {
   std::shared_ptr<Context> context_;
   std::shared_ptr<LazyGlyphAtlas> lazy_glyph_atlas_;
 
-  template <class T>
-  using Variants = std::unordered_map<ContentContextOptions,
-                                      std::unique_ptr<T>,
-                                      ContentContextOptions::Hash,
-                                      ContentContextOptions::Equal>;
+  template <class PipelineT>
+  class Variants {
+   public:
+    Variants() = default;
+
+    void Set(const ContentContextOptions& options,
+             std::unique_ptr<PipelineT> pipeline) {
+      pipelines_[options] = std::move(pipeline);
+    }
+
+    void SetDefault(const ContentContextOptions& options,
+                    std::unique_ptr<PipelineT> pipeline) {
+      default_options_ = options;
+      Set(options, std::move(pipeline));
+    }
+
+    void CreateDefault(const Context& context,
+                       const ContentContextOptions& options) {
+      auto desc = PipelineT::Builder::MakeDefaultPipelineDescriptor(context);
+      if (!desc.has_value()) {
+        VALIDATION_LOG << "Failed to create default pipeline.";
+        return;
+      }
+      options.ApplyToPipelineDescriptor(*desc);
+      SetDefault(options, std::make_unique<PipelineT>(context, desc));
+    }
+
+    PipelineT* Get(const ContentContextOptions& options) const {
+      if (auto found = pipelines_.find(options); found != pipelines_.end()) {
+        return found->second.get();
+      }
+      return nullptr;
+    }
+
+    PipelineT* GetDefault() const {
+      if (!default_options_.has_value()) {
+        return nullptr;
+      }
+      return Get(default_options_.value());
+    }
+
+    size_t GetPipelineCount() const { return pipelines_.size(); }
+
+   private:
+    std::optional<ContentContextOptions> default_options_;
+    std::unordered_map<ContentContextOptions,
+                       std::unique_ptr<PipelineT>,
+                       ContentContextOptions::Hash,
+                       ContentContextOptions::Equal>
+        pipelines_;
+
+    Variants(const Variants&) = delete;
+
+    Variants& operator=(const Variants&) = delete;
+  };
 
   // These are mutable because while the prototypes are created eagerly, any
   // variants requested from that are lazily created and cached in the variants
@@ -772,10 +807,6 @@ class ContentContext {
 #endif  // IMPELLER_ENABLE_OPENGLES
   mutable Variants<PositionUVPipeline> position_uv_pipelines_;
   mutable Variants<TiledTexturePipeline> tiled_texture_pipelines_;
-  mutable Variants<GaussianBlurAlphaDecalPipeline>
-      gaussian_blur_alpha_decal_pipelines_;
-  mutable Variants<GaussianBlurAlphaPipeline>
-      gaussian_blur_alpha_nodecal_pipelines_;
   mutable Variants<GaussianBlurDecalPipeline>
       gaussian_blur_noalpha_decal_pipelines_;
   mutable Variants<GaussianBlurPipeline>
@@ -843,12 +874,6 @@ class ContentContext {
       point_field_compute_pipelines_;
   mutable std::shared_ptr<Pipeline<ComputePipelineDescriptor>>
       uv_compute_pipelines_;
-  // The values for the default context options must be cached on
-  // initial creation. In the presence of wide gamut and platform views,
-  // it is possible that secondary surfaces will have a different default
-  // pixel format, which would cause the prototype check in GetPipeline
-  // below to fail.
-  ContentContextOptions default_options_;
 
   template <class TypedPipeline>
   std::shared_ptr<Pipeline<PipelineDescriptor>> GetPipeline(
@@ -862,29 +887,30 @@ class ContentContext {
       opts.wireframe = true;
     }
 
-    if (auto found = container.find(opts); found != container.end()) {
-      return found->second->WaitAndGet();
+    if (auto found = container.Get(opts)) {
+      return found->WaitAndGet();
     }
 
-    auto prototype = container.find(default_options_);
+    auto prototype = container.GetDefault();
 
     // The prototype must always be initialized in the constructor.
-    FML_CHECK(prototype != container.end());
+    FML_CHECK(prototype != nullptr);
 
-    auto pipeline = prototype->second->WaitAndGet();
+    auto pipeline = prototype->WaitAndGet();
     if (!pipeline) {
       return nullptr;
     }
 
     auto variant_future = pipeline->CreateVariant(
-        [&opts, variants_count = container.size()](PipelineDescriptor& desc) {
+        [&opts, variants_count =
+                    container.GetPipelineCount()](PipelineDescriptor& desc) {
           opts.ApplyToPipelineDescriptor(desc);
           desc.SetLabel(
               SPrintF("%s V#%zu", desc.GetLabel().c_str(), variants_count));
         });
     auto variant = std::make_unique<TypedPipeline>(std::move(variant_future));
     auto variant_pipeline = variant->WaitAndGet();
-    container[opts] = std::move(variant);
+    container.Set(opts, std::move(variant));
     return variant_pipeline;
   }
 
@@ -896,7 +922,9 @@ class ContentContext {
   std::shared_ptr<RenderTargetAllocator> render_target_cache_;
   bool wireframe_ = false;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(ContentContext);
+  ContentContext(const ContentContext&) = delete;
+
+  ContentContext& operator=(const ContentContext&) = delete;
 };
 
 }  // namespace impeller

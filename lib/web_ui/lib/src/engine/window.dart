@@ -14,11 +14,17 @@ import 'package:ui/ui.dart' as ui;
 import 'package:ui/ui_web/src/ui_web.dart' as ui_web;
 
 import '../engine.dart' show DimensionsProvider, registerHotRestartListener, renderer;
+import 'display.dart';
 import 'dom.dart';
+import 'embedder.dart';
+import 'mouse/context_menu.dart';
+import 'mouse/cursor.dart';
 import 'navigation/history.dart';
 import 'platform_dispatcher.dart';
+import 'platform_views/message_handler.dart';
 import 'services.dart';
 import 'util.dart';
+import 'view_embedder/dom_manager.dart';
 
 typedef _HandleMessageCallBack = Future<bool> Function();
 
@@ -28,13 +34,22 @@ const bool debugPrintPlatformMessages = false;
 /// The view ID for the implicit flutter view provided by the platform.
 const int kImplicitViewId = 0;
 
+/// Represents all views in the Flutter Web Engine.
+///
+/// In addition to everything defined in [ui.FlutterView], this class adds
+/// a few web-specific properties.
+abstract interface class EngineFlutterView extends ui.FlutterView {
+  ContextMenu get contextMenu;
+  DomManager get dom;
+  MouseCursor get mouseCursor;
+  PlatformViewMessageHandler get platformViewMessageHandler;
+}
+
 /// The Web implementation of [ui.SingletonFlutterWindow].
-class EngineFlutterWindow extends ui.SingletonFlutterWindow {
+class EngineFlutterWindow extends ui.SingletonFlutterWindow implements EngineFlutterView {
   EngineFlutterWindow(this.viewId, this.platformDispatcher) {
-    final EnginePlatformDispatcher engineDispatcher =
-        platformDispatcher as EnginePlatformDispatcher;
-    engineDispatcher.viewData[viewId] = this;
-    engineDispatcher.windowConfigurations[viewId] = const ViewConfiguration();
+    platformDispatcher.viewData[viewId] = this;
+    platformDispatcher.windowConfigurations[viewId] = const ViewConfiguration();
     if (ui_web.isCustomUrlStrategySet) {
       _browserHistory = createHistoryForExistingState(ui_web.urlStrategy);
     }
@@ -46,15 +61,27 @@ class EngineFlutterWindow extends ui.SingletonFlutterWindow {
   }
 
   @override
-  ui.Display get display {
-    return ui.PlatformDispatcher.instance.displays.first;
-  }
+  EngineFlutterDisplay get display => EngineFlutterDisplay.instance;
 
   @override
   final int viewId;
 
   @override
-  final ui.PlatformDispatcher platformDispatcher;
+  final EnginePlatformDispatcher platformDispatcher;
+
+  @override
+  late final MouseCursor mouseCursor = MouseCursor(dom.rootElement);
+
+  @override
+  late final ContextMenu contextMenu = ContextMenu(dom.rootElement);
+
+  @override
+  late final DomManager dom =
+      DomManager.fromFlutterViewEmbedderDEPRECATED(flutterViewEmbedder);
+
+  @override
+  late final PlatformViewMessageHandler platformViewMessageHandler =
+      PlatformViewMessageHandler(platformViewsContainer: dom.platformViewsHost);
 
   /// Handles the browser history integration to allow users to use the back
   /// button, etc.
@@ -203,10 +230,8 @@ class EngineFlutterWindow extends ui.SingletonFlutterWindow {
   }
 
   ViewConfiguration get _viewConfiguration {
-    final EnginePlatformDispatcher engineDispatcher =
-        platformDispatcher as EnginePlatformDispatcher;
-    assert(engineDispatcher.windowConfigurations.containsKey(viewId));
-    return engineDispatcher.windowConfigurations[viewId] ??
+    assert(platformDispatcher.windowConfigurations.containsKey(viewId));
+    return platformDispatcher.windowConfigurations[viewId] ??
         const ViewConfiguration();
   }
 
@@ -234,7 +259,21 @@ class EngineFlutterWindow extends ui.SingletonFlutterWindow {
   }
 
   @override
-  double get devicePixelRatio => _dimensionsProvider.getDevicePixelRatio();
+  double get devicePixelRatio => display.devicePixelRatio;
+
+  // TODO(mdebbar): Deprecate this and remove it.
+  // https://github.com/flutter/flutter/issues/127395
+  void debugOverrideDevicePixelRatio(double? value) {
+    assert(() {
+      printWarning(
+        'The window.debugOverrideDevicePixelRatio API is deprecated and will '
+        'be removed in a future release. Please use '
+        '`debugOverrideDevicePixelRatio` from `dart:ui_web` instead.',
+      );
+      return true;
+    }());
+    display.debugOverrideDevicePixelRatio(value);
+  }
 
   Stream<ui.Size?> get onResize => _dimensionsProvider.onResize;
 
@@ -352,33 +391,13 @@ class EngineFlutterWindow extends ui.SingletonFlutterWindow {
   ui.Size? debugPhysicalSizeOverride;
 }
 
-/// The Web implementation of [ui.SingletonFlutterWindow].
-class EngineSingletonFlutterWindow extends EngineFlutterWindow {
-  EngineSingletonFlutterWindow(
-      super.windowId, super.platformDispatcher);
-
-  @override
-  double get devicePixelRatio =>
-      _debugDevicePixelRatio ??
-      EnginePlatformDispatcher.browserDevicePixelRatio;
-
-  /// Overrides the default device pixel ratio.
-  ///
-  /// This is useful in tests to emulate screens of different dimensions.
-  void debugOverrideDevicePixelRatio(double? value) {
-    _debugDevicePixelRatio = value;
-  }
-
-  double? _debugDevicePixelRatio;
-}
-
 /// The window singleton.
 ///
 /// `dart:ui` window delegates to this value. However, this value has a wider
 /// API surface, providing Web-specific functionality that the standard
 /// `dart:ui` version does not.
-final EngineSingletonFlutterWindow window =
-    EngineSingletonFlutterWindow(kImplicitViewId, EnginePlatformDispatcher.instance);
+final EngineFlutterWindow window =
+    EngineFlutterWindow(kImplicitViewId, EnginePlatformDispatcher.instance);
 
 /// The Web implementation of [ui.ViewPadding].
 class ViewPadding implements ui.ViewPadding {

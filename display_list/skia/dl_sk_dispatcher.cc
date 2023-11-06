@@ -17,7 +17,10 @@ const SkPaint* DlSkCanvasDispatcher::safe_paint(bool use_attributes) {
   if (use_attributes) {
     // The accumulated SkPaint object will already have incorporated
     // any attribute overrides.
-    return &paint();
+    // Any rendering operation that uses an optional paint will ignore
+    // the shader in the paint so we inform that |paint()| method so
+    // that it can set the dither flag appropriately.
+    return &paint(false);
   } else if (has_opacity()) {
     temp_paint_.setAlphaf(opacity());
     return &temp_paint_;
@@ -141,7 +144,7 @@ void DlSkCanvasDispatcher::drawPaint() {
 void DlSkCanvasDispatcher::drawColor(DlColor color, DlBlendMode mode) {
   // SkCanvas::drawColor(SkColor) does the following conversion anyway
   // We do it here manually to increase precision on applying opacity
-  SkColor4f color4f = SkColor4f::FromColor(color);
+  SkColor4f color4f = SkColor4f::FromColor(ToSk(color));
   color4f.fA *= opacity();
   canvas_->drawColor(color4f, ToSk(mode));
 }
@@ -182,14 +185,14 @@ void DlSkCanvasDispatcher::drawVertices(const DlVertices* vertices,
                                         DlBlendMode mode) {
   canvas_->drawVertices(ToSk(vertices), ToSk(mode), paint());
 }
-void DlSkCanvasDispatcher::drawImage(const sk_sp<DlImage>& image,
+void DlSkCanvasDispatcher::drawImage(const sk_sp<DlImage> image,
                                      const SkPoint point,
                                      DlImageSampling sampling,
                                      bool render_with_attributes) {
   canvas_->drawImage(image ? image->skia_image() : nullptr, point.fX, point.fY,
                      ToSk(sampling), safe_paint(render_with_attributes));
 }
-void DlSkCanvasDispatcher::drawImageRect(const sk_sp<DlImage>& image,
+void DlSkCanvasDispatcher::drawImageRect(const sk_sp<DlImage> image,
                                          const SkRect& src,
                                          const SkRect& dst,
                                          DlImageSampling sampling,
@@ -199,7 +202,7 @@ void DlSkCanvasDispatcher::drawImageRect(const sk_sp<DlImage>& image,
                          ToSk(sampling), safe_paint(render_with_attributes),
                          ToSk(constraint));
 }
-void DlSkCanvasDispatcher::drawImageNine(const sk_sp<DlImage>& image,
+void DlSkCanvasDispatcher::drawImageNine(const sk_sp<DlImage> image,
                                          const SkIRect& center,
                                          const SkRect& dst,
                                          DlFilterMode filter,
@@ -214,7 +217,7 @@ void DlSkCanvasDispatcher::drawImageNine(const sk_sp<DlImage>& image,
   canvas_->drawImageNine(skia_image.get(), center, dst, ToSk(filter),
                          safe_paint(render_with_attributes));
 }
-void DlSkCanvasDispatcher::drawAtlas(const sk_sp<DlImage>& atlas,
+void DlSkCanvasDispatcher::drawAtlas(const sk_sp<DlImage> atlas,
                                      const SkRSXform xform[],
                                      const SkRect tex[],
                                      const DlColor colors[],
@@ -236,7 +239,7 @@ void DlSkCanvasDispatcher::drawAtlas(const sk_sp<DlImage>& atlas,
                      safe_paint(render_with_attributes));
 }
 void DlSkCanvasDispatcher::drawDisplayList(
-    const sk_sp<DisplayList>& display_list,
+    const sk_sp<DisplayList> display_list,
     SkScalar opacity) {
   const int restore_count = canvas_->getSaveCount();
 
@@ -264,10 +267,17 @@ void DlSkCanvasDispatcher::drawDisplayList(
   // Restore canvas state to what it was before dispatching.
   canvas_->restoreToCount(restore_count);
 }
-void DlSkCanvasDispatcher::drawTextBlob(const sk_sp<SkTextBlob>& blob,
+void DlSkCanvasDispatcher::drawTextBlob(const sk_sp<SkTextBlob> blob,
                                         SkScalar x,
                                         SkScalar y) {
   canvas_->drawTextBlob(blob, x, y, paint());
+}
+
+void DlSkCanvasDispatcher::drawTextFrame(
+    const std::shared_ptr<impeller::TextFrame>& text_frame,
+    SkScalar x,
+    SkScalar y) {
+  FML_CHECK(false);
 }
 
 void DlSkCanvasDispatcher::DrawShadow(SkCanvas* canvas,
@@ -283,8 +293,9 @@ void DlSkCanvasDispatcher::DrawShadow(SkCanvas* canvas,
                        ? SkShadowFlags::kTransparentOccluder_ShadowFlag
                        : SkShadowFlags::kNone_ShadowFlag;
   flags |= SkShadowFlags::kDirectionalLight_ShadowFlag;
-  SkColor in_ambient = SkColorSetA(color, kAmbientAlpha * SkColorGetA(color));
-  SkColor in_spot = SkColorSetA(color, kSpotAlpha * SkColorGetA(color));
+  SkColor in_ambient =
+      SkColorSetA(ToSk(color), kAmbientAlpha * color.getAlpha());
+  SkColor in_spot = SkColorSetA(ToSk(color), kSpotAlpha * color.getAlpha());
   SkColor ambient_color, spot_color;
   SkShadowUtils::ComputeTonalColors(in_ambient, in_spot, &ambient_color,
                                     &spot_color);

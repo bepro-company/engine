@@ -136,9 +136,9 @@ static void resize_channel(FlBinaryMessenger* messenger,
   // Fake implementation. Do nothing.
 }
 
-static void set_allow_channel_overflow(FlBinaryMessenger* messenger,
-                                       const gchar* channel,
-                                       bool allowed) {
+static void set_warns_on_channel_overflow(FlBinaryMessenger* messenger,
+                                          const gchar* channel,
+                                          bool warns) {
   // Fake implementation. Do nothing.
 }
 
@@ -149,7 +149,7 @@ static void fl_fake_binary_messenger_iface_init(
   iface->send_on_channel = send_on_channel;
   iface->send_on_channel_finish = send_on_channel_finish;
   iface->resize_channel = resize_channel;
-  iface->set_allow_channel_overflow = set_allow_channel_overflow;
+  iface->set_warns_on_channel_overflow = set_warns_on_channel_overflow;
 }
 
 static void fl_fake_binary_messenger_init(FlFakeBinaryMessenger* self) {}
@@ -455,7 +455,7 @@ TEST(FlBinaryMessengerTest, ResizeChannel) {
 }
 
 // Checks if the 'overflow' command is sent and is well-formed.
-TEST(FlBinaryMessengerTest, AllowOverflowChannel) {
+TEST(FlBinaryMessengerTest, WarnsOnOverflowChannel) {
   g_autoptr(FlEngine) engine = make_mock_engine();
   FlutterEngineProcTable* embedder_api = fl_engine_get_embedder_api(engine);
 
@@ -495,10 +495,60 @@ TEST(FlBinaryMessengerTest, AllowOverflowChannel) {
   EXPECT_EQ(error, nullptr);
 
   FlBinaryMessenger* messenger = fl_binary_messenger_new(engine);
-  fl_binary_messenger_set_allow_channel_overflow(messenger, "flutter/test",
-                                                 true);
+  fl_binary_messenger_set_warns_on_channel_overflow(messenger, "flutter/test",
+                                                    false);
 
   EXPECT_TRUE(called);
+}
+
+static gboolean quit_main_loop_cb(gpointer user_data) {
+  g_main_loop_quit(static_cast<GMainLoop*>(user_data));
+  return FALSE;
+}
+
+// Checks if error returned when invoking a command on the control channel
+// are handled.
+TEST(FlBinaryMessengerTest, ControlChannelErrorResponse) {
+  g_autoptr(GMainLoop) loop = g_main_loop_new(nullptr, 0);
+  g_autoptr(FlEngine) engine = make_mock_engine();
+  FlBinaryMessenger* messenger = fl_binary_messenger_new(engine);
+
+  g_autoptr(GError) error = nullptr;
+  EXPECT_TRUE(fl_engine_start(engine, &error));
+  EXPECT_EQ(error, nullptr);
+
+  FlutterEngineProcTable* embedder_api = fl_engine_get_embedder_api(engine);
+
+  bool called = false;
+
+  FlutterEngineSendPlatformMessageFnPtr old_handler =
+      embedder_api->SendPlatformMessage;
+  embedder_api->SendPlatformMessage = MOCK_ENGINE_PROC(
+      SendPlatformMessage,
+      ([&called, old_handler, loop](auto engine,
+                                    const FlutterPlatformMessage* message) {
+        // Expect to receive a message on the "control" channel.
+        if (strcmp(message->channel, "dev.flutter/channel-buffers") != 0) {
+          return old_handler(engine, message);
+        }
+
+        called = true;
+
+        // Register a callback to quit the main loop when binary messenger work
+        // ends.
+        g_idle_add(quit_main_loop_cb, loop);
+
+        // Simulates an internal error.
+        return kInvalidArguments;
+      }));
+
+  fl_binary_messenger_set_warns_on_channel_overflow(messenger, "flutter/test",
+                                                    false);
+
+  EXPECT_TRUE(called);
+
+  // Blocks here until quit_main_loop_cb is called.
+  g_main_loop_run(loop);
 }
 
 // NOLINTEND(clang-analyzer-core.StackAddressEscape)

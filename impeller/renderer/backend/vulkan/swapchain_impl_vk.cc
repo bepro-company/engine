@@ -4,12 +4,16 @@
 
 #include "impeller/renderer/backend/vulkan/swapchain_impl_vk.h"
 
+#include "fml/synchronization/count_down_latch.h"
+#include "impeller/base/validation.h"
 #include "impeller/renderer/backend/vulkan/command_buffer_vk.h"
 #include "impeller/renderer/backend/vulkan/command_encoder_vk.h"
 #include "impeller/renderer/backend/vulkan/context_vk.h"
 #include "impeller/renderer/backend/vulkan/formats_vk.h"
+#include "impeller/renderer/backend/vulkan/gpu_tracer_vk.h"
 #include "impeller/renderer/backend/vulkan/surface_vk.h"
 #include "impeller/renderer/backend/vulkan/swapchain_image_vk.h"
+#include "impeller/renderer/context.h"
 #include "vulkan/vulkan_structs.hpp"
 
 namespace impeller {
@@ -26,6 +30,9 @@ struct FrameSynchronizer {
   vk::UniqueSemaphore render_ready;
   vk::UniqueSemaphore present_ready;
   std::shared_ptr<CommandBuffer> final_cmd_buffer;
+  /// @brief A latch that is signaled _after_ a given swapchain image is
+  ///        presented.
+  std::shared_ptr<fml::CountDownLatch> present_latch;
   bool is_valid = false;
 
   explicit FrameSynchronizer(const vk::Device& device) {
@@ -42,12 +49,14 @@ struct FrameSynchronizer {
     acquire = std::move(acquire_res.value);
     render_ready = std::move(render_res.value);
     present_ready = std::move(present_res.value);
+    present_latch = std::make_shared<fml::CountDownLatch>(0u);
     is_valid = true;
   }
 
   ~FrameSynchronizer() = default;
 
   bool WaitForFence(const vk::Device& device) {
+    present_latch->Wait();
     if (auto result = device.waitForFences(
             *acquire,                             // fence
             true,                                 // wait all
@@ -62,6 +71,7 @@ struct FrameSynchronizer {
       VALIDATION_LOG << "Could not reset fence: " << vk::to_string(result);
       return false;
     }
+    present_latch = std::make_shared<fml::CountDownLatch>(1u);
     return true;
   }
 };
@@ -142,6 +152,7 @@ SwapchainImplVK::SwapchainImplVK(
     vk::SwapchainKHR old_swapchain,
     vk::SurfaceTransformFlagBitsKHR last_transform) {
   if (!context) {
+    VALIDATION_LOG << "Cannot create a swapchain without a context.";
     return;
   }
 
@@ -375,21 +386,29 @@ SwapchainImplVK::AcquireResult SwapchainImplVK::AcquireNextDrawable() {
       nullptr               // fence
   );
 
-  if (acq_result == vk::Result::eErrorOutOfDateKHR) {
-    return AcquireResult{true /* out of date */};
-  }
-
-  if (acq_result != vk::Result::eSuccess &&
-      acq_result != vk::Result::eSuboptimalKHR) {
-    VALIDATION_LOG << "Could not acquire next swapchain image: "
-                   << vk::to_string(acq_result);
-    return {};
+  switch (acq_result) {
+    case vk::Result::eSuccess:
+      // Keep going.
+      break;
+    case vk::Result::eSuboptimalKHR:
+    case vk::Result::eErrorOutOfDateKHR:
+      // A recoverable error. Just say we are out of date.
+      return AcquireResult{true /* out of date */};
+      break;
+    default:
+      // An unrecoverable error.
+      VALIDATION_LOG << "Could not acquire next swapchain image: "
+                     << vk::to_string(acq_result);
+      return AcquireResult{false /* out of date */};
   }
 
   if (index >= images_.size()) {
     VALIDATION_LOG << "Swapchain returned an invalid image index.";
     return {};
   }
+
+  /// Record all subsequent cmd buffers as part of the current frame.
+  context.GetGPUTracer()->MarkFrameStart();
 
   auto image = images_[index % images_.size()];
   uint32_t image_index = index;
@@ -465,48 +484,56 @@ bool SwapchainImplVK::Present(const std::shared_ptr<SwapchainImageVK>& image,
     }
   }
 
-  context.GetConcurrentWorkerTaskRunner()->PostTask(
-      [&, index, image, current_frame = current_frame_] {
-        auto context_strong = context_.lock();
-        if (!context_strong) {
-          return;
-        }
+  context.GetGPUTracer()->MarkFrameEnd();
 
-        const auto& sync = synchronizers_[current_frame];
+  auto task = [&, index, current_frame = current_frame_] {
+    auto context_strong = context_.lock();
+    if (!context_strong) {
+      return;
+    }
 
-        //----------------------------------------------------------------------------
-        /// Present the image.
-        ///
-        uint32_t indices[] = {static_cast<uint32_t>(index)};
+    const auto& sync = synchronizers_[current_frame];
 
-        vk::PresentInfoKHR present_info;
-        present_info.setSwapchains(*swapchain_);
-        present_info.setImageIndices(indices);
-        present_info.setWaitSemaphores(*sync->present_ready);
+    //----------------------------------------------------------------------------
+    /// Present the image.
+    ///
+    uint32_t indices[] = {static_cast<uint32_t>(index)};
 
-        switch (auto result = present_queue_.presentKHR(present_info)) {
-          case vk::Result::eErrorOutOfDateKHR:
-            // Caller will recreate the impl on acquisition, not submission.
-            [[fallthrough]];
-          case vk::Result::eErrorSurfaceLostKHR:
-            // Vulkan guarantees that the set of queue operations will still
-            // complete successfully.
-            [[fallthrough]];
-          case vk::Result::eSuboptimalKHR:
-            // Even though we're handling rotation changes via polling, we
-            // still need to handle the case where the swapchain signals that
-            // it's suboptimal (i.e. every frame when we are rotated given we
-            // aren't doing Vulkan pre-rotation).
-            [[fallthrough]];
-          case vk::Result::eSuccess:
-            return;
-          default:
-            VALIDATION_LOG << "Could not present queue: "
-                           << vk::to_string(result);
-            return;
-        }
-        FML_UNREACHABLE();
-      });
+    vk::PresentInfoKHR present_info;
+    present_info.setSwapchains(*swapchain_);
+    present_info.setImageIndices(indices);
+    present_info.setWaitSemaphores(*sync->present_ready);
+
+    auto result = present_queue_.presentKHR(present_info);
+    sync->present_latch->CountDown();
+
+    switch (result) {
+      case vk::Result::eErrorOutOfDateKHR:
+        // Caller will recreate the impl on acquisition, not submission.
+        [[fallthrough]];
+      case vk::Result::eErrorSurfaceLostKHR:
+        // Vulkan guarantees that the set of queue operations will still
+        // complete successfully.
+        [[fallthrough]];
+      case vk::Result::eSuboptimalKHR:
+        // Even though we're handling rotation changes via polling, we
+        // still need to handle the case where the swapchain signals that
+        // it's suboptimal (i.e. every frame when we are rotated given we
+        // aren't doing Vulkan pre-rotation).
+        [[fallthrough]];
+      case vk::Result::eSuccess:
+        return;
+      default:
+        VALIDATION_LOG << "Could not present queue: " << vk::to_string(result);
+        return;
+    }
+    FML_UNREACHABLE();
+  };
+  if (context.GetSyncPresentation()) {
+    task();
+  } else {
+    context.GetQueueSubmitRunner()->PostTask(task);
+  }
   return true;
 }
 

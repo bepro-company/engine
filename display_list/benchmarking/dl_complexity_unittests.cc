@@ -6,7 +6,7 @@
 #include "flutter/display_list/benchmarking/dl_complexity_gl.h"
 #include "flutter/display_list/benchmarking/dl_complexity_metal.h"
 #include "flutter/display_list/display_list.h"
-#include "flutter/display_list/display_list_builder.h"
+#include "flutter/display_list/dl_builder.h"
 #include "flutter/display_list/dl_sampling_options.h"
 #include "flutter/display_list/testing/dl_test_snippets.h"
 #include "flutter/testing/testing.h"
@@ -102,7 +102,7 @@ TEST(DisplayListComplexity, StrokeWidth) {
   auto display_list_stroke_0 = builder_stroke_0.Build();
 
   DisplayListBuilder builder_stroke_1;
-  builder_stroke_1.DrawLine(SkPoint::Make(0, 0), SkPoint::Make(100, 100),
+  builder_stroke_0.DrawLine(SkPoint::Make(0, 0), SkPoint::Make(100, 100),
                             DlPaint().setStrokeWidth(1.0f));
   auto display_list_stroke_1 = builder_stroke_1.Build();
 
@@ -190,7 +190,7 @@ TEST(DisplayListComplexity, DrawShadow) {
   line_path.moveTo(SkPoint::Make(0, 0));
   line_path.lineTo(SkPoint::Make(10, 10));
   line_path.close();
-  builder_line.DrawShadow(line_path, SK_ColorRED, 10.0f, false, 1.0f);
+  builder_line.DrawShadow(line_path, DlColor(SK_ColorRED), 10.0f, false, 1.0f);
   auto display_list_line = builder_line.Build();
 
   DisplayListBuilder builder_quad;
@@ -198,7 +198,7 @@ TEST(DisplayListComplexity, DrawShadow) {
   quad_path.moveTo(SkPoint::Make(0, 0));
   quad_path.quadTo(SkPoint::Make(10, 10), SkPoint::Make(10, 20));
   quad_path.close();
-  builder_quad.DrawShadow(quad_path, SK_ColorRED, 10.0f, false, 1.0f);
+  builder_quad.DrawShadow(quad_path, DlColor(SK_ColorRED), 10.0f, false, 1.0f);
   auto display_list_quad = builder_quad.Build();
 
   DisplayListBuilder builder_conic;
@@ -206,7 +206,8 @@ TEST(DisplayListComplexity, DrawShadow) {
   conic_path.moveTo(SkPoint::Make(0, 0));
   conic_path.conicTo(SkPoint::Make(10, 10), SkPoint::Make(10, 20), 1.5f);
   conic_path.close();
-  builder_conic.DrawShadow(conic_path, SK_ColorRED, 10.0f, false, 1.0f);
+  builder_conic.DrawShadow(conic_path, DlColor(SK_ColorRED), 10.0f, false,
+                           1.0f);
   auto display_list_conic = builder_conic.Build();
 
   DisplayListBuilder builder_cubic;
@@ -214,7 +215,8 @@ TEST(DisplayListComplexity, DrawShadow) {
   cubic_path.moveTo(SkPoint::Make(0, 0));
   cubic_path.cubicTo(SkPoint::Make(10, 10), SkPoint::Make(10, 20),
                      SkPoint::Make(20, 20));
-  builder_cubic.DrawShadow(cubic_path, SK_ColorRED, 10.0f, false, 1.0f);
+  builder_cubic.DrawShadow(cubic_path, DlColor(SK_ColorRED), 10.0f, false,
+                           1.0f);
   auto display_list_cubic = builder_cubic.Build();
 
   auto calculators = AccumulatorCalculators();
@@ -304,7 +306,7 @@ TEST(DisplayListComplexity, DrawVertices) {
 
 TEST(DisplayListComplexity, DrawTextBlob) {
   auto text_blob = SkTextBlob::MakeFromString(
-      "The quick brown fox jumps over the lazy dog.", SkFont());
+      "The quick brown fox jumps over the lazy dog.", CreateTestFontOfSize(20));
 
   DisplayListBuilder builder;
   builder.DrawTextBlob(text_blob, 0.0f, 0.0f, DlPaint());

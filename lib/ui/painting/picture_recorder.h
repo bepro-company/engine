@@ -5,7 +5,7 @@
 #ifndef FLUTTER_LIB_UI_PAINTING_PICTURE_RECORDER_H_
 #define FLUTTER_LIB_UI_PAINTING_PICTURE_RECORDER_H_
 
-#include "flutter/display_list/display_list_builder.h"
+#include "flutter/display_list/dl_builder.h"
 #include "flutter/lib/ui/dart_wrapper.h"
 
 namespace flutter {
@@ -22,7 +22,7 @@ class PictureRecorder : public RefCountedDartWrappable<PictureRecorder> {
   ~PictureRecorder() override;
 
   sk_sp<DisplayListBuilder> BeginRecording(SkRect bounds);
-  fml::RefPtr<Picture> endRecording(Dart_Handle dart_picture);
+  void endRecording(Dart_Handle dart_picture);
 
   void set_canvas(fml::RefPtr<Canvas> canvas) { canvas_ = std::move(canvas); }
 

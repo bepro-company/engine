@@ -15,6 +15,7 @@
 #include "flutter/shell/platform/common/client_wrapper/binary_messenger_impl.h"
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/standard_message_codec.h"
 #include "flutter/shell/platform/common/path_utils.h"
+#include "flutter/shell/platform/embedder/embedder_struct_macros.h"
 #include "flutter/shell/platform/windows/accessibility_bridge_windows.h"
 #include "flutter/shell/platform/windows/flutter_windows_view.h"
 #include "flutter/shell/platform/windows/keyboard_key_channel_handler.h"
@@ -156,10 +157,17 @@ FlutterLocale CovertToFlutterLocale(const LanguageInfo& info) {
 
 }  // namespace
 
-FlutterWindowsEngine::FlutterWindowsEngine(const FlutterProjectBundle& project)
+FlutterWindowsEngine::FlutterWindowsEngine(
+    const FlutterProjectBundle& project,
+    std::shared_ptr<WindowsProcTable> windows_proc_table)
     : project_(std::make_unique<FlutterProjectBundle>(project)),
+      windows_proc_table_(std::move(windows_proc_table)),
       aot_data_(nullptr, nullptr),
       lifecycle_manager_(std::make_unique<WindowsLifecycleManager>(this)) {
+  if (windows_proc_table_ == nullptr) {
+    windows_proc_table_ = std::make_shared<WindowsProcTable>();
+  }
+
   embedder_api_.struct_size = sizeof(FlutterEngineProcTable);
   FlutterEngineGetProcAddresses(&embedder_api_);
 
@@ -373,12 +381,25 @@ bool FlutterWindowsEngine::Run(std::string_view entrypoint) {
       host->root_isolate_create_callback_();
     }
   };
+  args.channel_update_callback = [](const FlutterChannelUpdate* update,
+                                    void* user_data) {
+    auto host = static_cast<FlutterWindowsEngine*>(user_data);
+    if (SAFE_ACCESS(update, channel, nullptr) != nullptr) {
+      std::string channel_name(update->channel);
+      host->OnChannelUpdate(std::move(channel_name),
+                            SAFE_ACCESS(update, listening, false));
+    }
+  };
 
   args.custom_task_runners = &custom_task_runners;
 
   if (aot_data_) {
     args.aot_data = aot_data_.get();
   }
+
+  // The platform thread creates OpenGL contexts. These
+  // must be released to be used by the engine's threads.
+  FML_DCHECK(!surface_manager_ || !surface_manager_->HasContextCurrent());
 
   FlutterRendererConfig renderer_config;
 
@@ -555,8 +576,7 @@ void FlutterWindowsEngine::HandlePlatformMessage(
 
   auto message = ConvertToDesktopMessage(*engine_message);
 
-  message_dispatcher_->HandleMessage(
-      message, [this] {}, [this] {});
+  message_dispatcher_->HandleMessage(message, [this] {}, [this] {});
 }
 
 void FlutterWindowsEngine::ReloadSystemFonts() {
@@ -591,7 +611,7 @@ void FlutterWindowsEngine::SetLifecycleState(flutter::AppLifecycleState state) {
 
 void FlutterWindowsEngine::SendSystemLocales() {
   std::vector<LanguageInfo> languages =
-      GetPreferredLanguageInfo(windows_proc_table_);
+      GetPreferredLanguageInfo(*windows_proc_table_);
   std::vector<FlutterLocale> flutter_locales;
   flutter_locales.reserve(languages.size());
   for (const auto& info : languages) {
@@ -723,34 +743,27 @@ std::string FlutterWindowsEngine::GetExecutableName() const {
   return "Flutter";
 }
 
-void FlutterWindowsEngine::UpdateAccessibilityFeatures(
-    FlutterAccessibilityFeature flags) {
-  embedder_api_.UpdateAccessibilityFeatures(engine_, flags);
+void FlutterWindowsEngine::UpdateAccessibilityFeatures() {
+  UpdateHighContrastMode();
 }
 
-void FlutterWindowsEngine::UpdateHighContrastEnabled(bool enabled) {
-  high_contrast_enabled_ = enabled;
-  int flags = EnabledAccessibilityFeatures();
-  if (enabled) {
-    flags |=
-        FlutterAccessibilityFeature::kFlutterAccessibilityFeatureHighContrast;
-  } else {
-    flags &=
-        ~FlutterAccessibilityFeature::kFlutterAccessibilityFeatureHighContrast;
-  }
-  UpdateAccessibilityFeatures(static_cast<FlutterAccessibilityFeature>(flags));
-  settings_plugin_->UpdateHighContrastMode(enabled);
+void FlutterWindowsEngine::UpdateHighContrastMode() {
+  high_contrast_enabled_ = windows_proc_table_->GetHighContrastEnabled();
+
+  SendAccessibilityFeatures();
+  settings_plugin_->UpdateHighContrastMode(high_contrast_enabled_);
 }
 
-int FlutterWindowsEngine::EnabledAccessibilityFeatures() const {
+void FlutterWindowsEngine::SendAccessibilityFeatures() {
   int flags = 0;
-  if (high_contrast_enabled()) {
+
+  if (high_contrast_enabled_) {
     flags |=
         FlutterAccessibilityFeature::kFlutterAccessibilityFeatureHighContrast;
   }
-  // As more accessibility features are enabled for Windows,
-  // the corresponding checks and flags should be added here.
-  return flags;
+
+  embedder_api_.UpdateAccessibilityFeatures(
+      engine_, static_cast<FlutterAccessibilityFeature>(flags));
 }
 
 void FlutterWindowsEngine::HandleAccessibilityMessage(
@@ -792,16 +805,6 @@ void FlutterWindowsEngine::OnDwmCompositionChanged() {
   view_->OnDwmCompositionChanged();
 }
 
-// TODO(yaakovschectman): This enables the flutter/lifecycle channel
-// once the System.initializationComplete message is received on
-// the flutter/system channel. This is a short-term workaround to
-// ensure the framework is initialized and ready to accept lifecycle
-// messages. This cross-channel dependency should be removed.
-// See: https://github.com/flutter/flutter/issues/132514
-void FlutterWindowsEngine::OnApplicationLifecycleEnabled() {
-  lifecycle_manager_->BeginProcessingLifecycle();
-}
-
 void FlutterWindowsEngine::OnWindowStateEvent(HWND hwnd,
                                               WindowStateEvent event) {
   lifecycle_manager_->OnWindowStateEvent(hwnd, event);
@@ -817,6 +820,14 @@ std::optional<LRESULT> FlutterWindowsEngine::ProcessExternalWindowMessage(
                                                      lparam);
   }
   return std::nullopt;
+}
+
+void FlutterWindowsEngine::OnChannelUpdate(std::string name, bool listening) {
+  if (name == "flutter/platform" && listening) {
+    lifecycle_manager_->BeginProcessingExit();
+  } else if (name == "flutter/lifecycle" && listening) {
+    lifecycle_manager_->BeginProcessingLifecycle();
+  }
 }
 
 }  // namespace flutter

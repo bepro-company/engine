@@ -22,6 +22,10 @@ Path PathBuilder::TakePath(FillType fill) {
   auto path = prototype_;
   path.SetFillType(fill);
   path.SetConvexity(convexity_);
+  if (!did_compute_bounds_) {
+    path.ComputeBounds();
+  }
+  did_compute_bounds_ = false;
   return path;
 }
 
@@ -183,16 +187,16 @@ PathBuilder& PathBuilder::AddRect(Rect rect) {
   auto tr = rect.origin + Point{rect.size.width, 0.0};
 
   MoveTo(tl);
-  prototype_.AddLinearComponent(tl, tr)
-      .AddLinearComponent(tr, br)
-      .AddLinearComponent(br, bl);
+  LineTo(tr);
+  LineTo(br);
+  LineTo(bl);
   Close();
 
   return *this;
 }
 
 PathBuilder& PathBuilder::AddCircle(const Point& c, Scalar r) {
-  return AddOval(Rect{c.x - r, c.y - r, 2.0f * r, 2.0f * r});
+  return AddOval(Rect::MakeXYWH(c.x - r, c.y - r, 2.0f * r, 2.0f * r));
 }
 
 PathBuilder& PathBuilder::AddRoundedRect(Rect rect, Scalar radius) {
@@ -450,6 +454,17 @@ PathBuilder& PathBuilder::AddPath(const Path& path) {
     prototype_.AddContourComponent(m.destination);
   };
   path.EnumerateComponents(linear, quadratic, cubic, move);
+  return *this;
+}
+
+PathBuilder& PathBuilder::Shift(Point offset) {
+  prototype_.Shift(offset);
+  return *this;
+}
+
+PathBuilder& PathBuilder::SetBounds(Rect bounds) {
+  prototype_.SetBounds(bounds);
+  did_compute_bounds_ = true;
   return *this;
 }
 

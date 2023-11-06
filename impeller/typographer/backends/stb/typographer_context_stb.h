@@ -27,10 +27,12 @@ class TypographerContextSTB : public TypographerContext {
       Context& context,
       GlyphAtlas::Type type,
       std::shared_ptr<GlyphAtlasContext> atlas_context,
-      const FontGlyphPair::Set& font_glyph_pairs) const override;
+      const FontGlyphMap& font_glyph_map) const override;
 
  private:
-  FML_DISALLOW_COPY_AND_ASSIGN(TypographerContextSTB);
+  TypographerContextSTB(const TypographerContextSTB&) = delete;
+
+  TypographerContextSTB& operator=(const TypographerContextSTB&) = delete;
 };
 
 }  // namespace impeller

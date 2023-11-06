@@ -104,7 +104,7 @@ class DlDashPathEffect final : public DlPathEffect {
     }
   }
 
-  DlDashPathEffect(const DlDashPathEffect* dash_effect)
+  explicit DlDashPathEffect(const DlDashPathEffect* dash_effect)
       : DlDashPathEffect(dash_effect->intervals(),
                          dash_effect->count_,
                          dash_effect->phase_) {}
@@ -114,7 +114,7 @@ class DlDashPathEffect final : public DlPathEffect {
   int count_;
   SkScalar phase_;
 
-  friend class DlOpRecorder;
+  friend class DisplayListBuilder;
   friend class DlPathEffect;
 
   FML_DISALLOW_COPY_ASSIGN_AND_MOVE(DlDashPathEffect);

@@ -237,6 +237,17 @@ public class FlutterJNI {
     return nativeGetIsSoftwareRenderingEnabled();
   }
 
+  private native boolean nativeGetDisableImageReaderPlatformViews();
+
+  /**
+   * Checks launch settings for whether image reader platform views are disabled.
+   *
+   * <p>The value is the same per program.
+   */
+  @UiThread
+  public boolean getDisableImageReaderPlatformViews() {
+    return nativeGetDisableImageReaderPlatformViews();
+  }
   /**
    * VM Service URI for the VM instance.
    *
@@ -740,6 +751,14 @@ public class FlutterJNI {
       int[] displayFeaturesBounds,
       int[] displayFeaturesType,
       int[] displayFeaturesState);
+
+  @UiThread
+  public void SetIsRenderingToImageView(boolean value) {
+    nativeSetIsRenderingToImageView(nativeShellHolderId, value);
+  }
+
+  private native void nativeSetIsRenderingToImageView(long nativeShellHolderId, boolean value);
+
   // ----- End Render Surface Support -----
 
   // ------ Start Touch Interaction Support ---

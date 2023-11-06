@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:async';
-
 import 'package:ui/src/engine/safe_browser_api.dart';
 import 'package:ui/ui.dart' as ui;
 
@@ -77,8 +75,8 @@ class FlutterViewEmbedder {
   ///
   /// This element is inserted after the [semanticsHostElement] so that
   /// platform views take precedence in DOM event handling.
-  DomElement? get sceneHostElement => _sceneHostElement;
-  DomElement? _sceneHostElement;
+  DomElement get sceneHostElement => _sceneHostElement;
+  late DomElement _sceneHostElement;
 
   /// A child element of body outside the shadowroot that hosts
   /// global resources such svg filters and clip paths when using webkit.
@@ -97,8 +95,8 @@ class FlutterViewEmbedder {
   ///
   /// This element is inserted before the [semanticsHostElement] so that
   /// platform views take precedence in DOM event handling.
-  DomElement? get semanticsHostElement => _semanticsHostElement;
-  DomElement? _semanticsHostElement;
+  DomElement get semanticsHostElementDEPRECATED => _semanticsHostElement;
+  late DomElement _semanticsHostElement;
 
   /// The last scene element rendered by the [render] method.
   DomElement? get sceneElement => _sceneElement;
@@ -112,7 +110,7 @@ class FlutterViewEmbedder {
     if (sceneElement != _sceneElement) {
       _sceneElement?.remove();
       _sceneElement = sceneElement;
-      _sceneHostElement!.append(sceneElement!);
+      _sceneHostElement.append(sceneElement!);
     }
   }
 
@@ -122,17 +120,17 @@ class FlutterViewEmbedder {
   /// which captures semantics input events. The semantics DOM tree must be a
   /// child of the glass pane element so that events bubble up to the glass pane
   /// if they are not handled by semantics.
-  DomElement get flutterViewElement => _flutterViewElement;
+  DomElement get flutterViewElementDEPRECATED => _flutterViewElement;
   late DomElement _flutterViewElement;
 
-  DomElement get glassPaneElement => _glassPaneElement;
+  DomElement get glassPaneElementDEPRECATED => _glassPaneElement;
   late DomElement _glassPaneElement;
 
   /// The shadow root of the [glassPaneElement], which contains the whole Flutter app.
-  DomShadowRoot get glassPaneShadow => _glassPaneShadow;
+  DomShadowRoot get glassPaneShadowDEPRECATED => _glassPaneShadow;
   late DomShadowRoot _glassPaneShadow;
 
-  DomElement get textEditingHostNode => _textEditingHostNode;
+  DomElement get textEditingHostNodeDEPRECATED => _textEditingHostNode;
   late DomElement _textEditingHostNode;
 
   AccessibilityAnnouncements get accessibilityAnnouncements => _accessibilityAnnouncements;
@@ -171,16 +169,16 @@ class FlutterViewEmbedder {
     //
     // The embeddingStrategy will take care of cleaning up the glassPane on hot
     // restart.
-    _embeddingStrategy.attachGlassPane(flutterViewElement);
-    flutterViewElement.appendChild(glassPaneElement);
+    _embeddingStrategy.attachGlassPane(_flutterViewElement);
+    _flutterViewElement.appendChild(_glassPaneElement);
 
-    if (getJsProperty<Object?>(glassPaneElement, 'attachShadow') == null) {
+    if (getJsProperty<Object?>(_glassPaneElement, 'attachShadow') == null) {
       throw UnsupportedError('ShadowDOM is not supported in this browser.');
     }
 
     // Create a [HostNode] under the glass pane element, and attach everything
     // there, instead of directly underneath the glass panel.
-    final DomShadowRoot shadowRoot = glassPaneElement.attachShadow(<String, dynamic>{
+    final DomShadowRoot shadowRoot = _glassPaneElement.attachShadow(<String, dynamic>{
       'mode': 'open',
       // This needs to stay false to prevent issues like this:
       // - https://github.com/flutter/flutter/issues/85759
@@ -198,7 +196,7 @@ class FlutterViewEmbedder {
     );
 
     _textEditingHostNode =
-        createTextEditingHostNode(flutterViewElement, defaultCssFont, configuration.nonce);
+        createTextEditingHostNode(_flutterViewElement, defaultCssFont, configuration.nonce);
 
     // Don't allow the scene to receive pointer events.
     _sceneHostElement = domDocument.createElement('flt-scene-host')
@@ -206,12 +204,10 @@ class FlutterViewEmbedder {
 
     renderer.reset(this);
 
-    final DomElement semanticsHostElement =
-        domDocument.createElement('flt-semantics-host');
-    semanticsHostElement.style
+    _semanticsHostElement = domDocument.createElement('flt-semantics-host');
+    _semanticsHostElement.style
       ..position = 'absolute'
       ..transformOrigin = '0 0 0';
-    _semanticsHostElement = semanticsHostElement;
     updateSemanticsScreenProperties();
 
     final DomElement accessibilityPlaceholder = EngineSemanticsOwner
@@ -222,7 +218,7 @@ class FlutterViewEmbedder {
     _accessibilityAnnouncements = AccessibilityAnnouncements(hostElement: announcementsElement);
 
     shadowRoot.append(accessibilityPlaceholder);
-    shadowRoot.append(_sceneHostElement!);
+    shadowRoot.append(_sceneHostElement);
     shadowRoot.append(announcementsElement);
 
     // The semantic host goes last because hit-test order-wise it must be
@@ -235,17 +231,17 @@ class FlutterViewEmbedder {
     // elements transparent. This way, if a platform view appears among other
     // interactive Flutter widgets, as long as those widgets do not intersect
     // with the platform view, the platform view will be reachable.
-    flutterViewElement.appendChild(semanticsHostElement);
+    _flutterViewElement.appendChild(_semanticsHostElement);
 
     // When debugging semantics, make the scene semi-transparent so that the
     // semantics tree is more prominent.
     if (configuration.debugShowSemanticsNodes) {
-      _sceneHostElement!.style.opacity = '0.3';
+      _sceneHostElement.style.opacity = '0.3';
     }
 
     KeyboardBinding.initInstance();
     PointerBinding.initInstance(
-      flutterViewElement,
+      _flutterViewElement,
       KeyboardBinding.instance!.converter,
     );
 
@@ -261,7 +257,7 @@ class FlutterViewEmbedder {
   /// logical pixels. To compensate, an inverse scale is injected at the root
   /// level.
   void updateSemanticsScreenProperties() {
-    _semanticsHostElement!.style
+    _semanticsHostElement.style
         .setProperty('transform', 'scale(${1 / window.devicePixelRatio})');
   }
 
@@ -288,78 +284,6 @@ class FlutterViewEmbedder {
     }
   }
 
-  static const String orientationLockTypeAny = 'any';
-  static const String orientationLockTypeNatural = 'natural';
-  static const String orientationLockTypeLandscape = 'landscape';
-  static const String orientationLockTypePortrait = 'portrait';
-  static const String orientationLockTypePortraitPrimary = 'portrait-primary';
-  static const String orientationLockTypePortraitSecondary =
-      'portrait-secondary';
-  static const String orientationLockTypeLandscapePrimary = 'landscape-primary';
-  static const String orientationLockTypeLandscapeSecondary =
-      'landscape-secondary';
-
-  /// Sets preferred screen orientation.
-  ///
-  /// Specifies the set of orientations the application interface can be
-  /// displayed in.
-  ///
-  /// The [orientations] argument is a list of DeviceOrientation values.
-  /// The empty list uses Screen unlock api and causes the application to
-  /// defer to the operating system default.
-  ///
-  /// See w3c screen api: https://www.w3.org/TR/screen-orientation/
-  Future<bool> setPreferredOrientation(List<dynamic> orientations) {
-    final DomScreen? screen = domWindow.screen;
-    if (screen != null) {
-      final DomScreenOrientation? screenOrientation = screen.orientation;
-      if (screenOrientation != null) {
-        if (orientations.isEmpty) {
-          screenOrientation.unlock();
-          return Future<bool>.value(true);
-        } else {
-          final String? lockType =
-              _deviceOrientationToLockType(orientations.first as String?);
-          if (lockType != null) {
-            final Completer<bool> completer = Completer<bool>();
-            try {
-              screenOrientation.lock(lockType).then((dynamic _) {
-                completer.complete(true);
-              }).catchError((dynamic error) {
-                // On Chrome desktop an error with 'not supported on this device
-                // error' is fired.
-                completer.complete(false);
-              });
-            } catch (_) {
-              return Future<bool>.value(false);
-            }
-            return completer.future;
-          }
-        }
-      }
-    }
-    // API is not supported on this browser return false.
-    return Future<bool>.value(false);
-  }
-
-  // Converts device orientation to w3c OrientationLockType enum.
-  //
-  // See also: https://developer.mozilla.org/en-US/docs/Web/API/ScreenOrientation/lock
-  static String? _deviceOrientationToLockType(String? deviceOrientation) {
-    switch (deviceOrientation) {
-      case 'DeviceOrientation.portraitUp':
-        return orientationLockTypePortraitPrimary;
-      case 'DeviceOrientation.portraitDown':
-        return orientationLockTypePortraitSecondary;
-      case 'DeviceOrientation.landscapeLeft':
-        return orientationLockTypeLandscapePrimary;
-      case 'DeviceOrientation.landscapeRight':
-        return orientationLockTypeLandscapeSecondary;
-      default:
-        return null;
-    }
-  }
-
   /// Add an element as a global resource to be referenced by CSS.
   ///
   /// This call create a global resource host element on demand and either
@@ -375,9 +299,9 @@ class FlutterViewEmbedder {
       if (isWebKit) {
         // The resourcesHost *must* be a sibling of the glassPaneElement.
         _embeddingStrategy.attachResourcesHost(resourcesHost,
-            nextTo: flutterViewElement);
+            nextTo: _flutterViewElement);
       } else {
-        glassPaneShadow.insertBefore(resourcesHost, glassPaneShadow.firstChild);
+        _glassPaneShadow.insertBefore(resourcesHost, _glassPaneShadow.firstChild);
       }
       _resourcesHost = resourcesHost;
     }
@@ -392,20 +316,6 @@ class FlutterViewEmbedder {
     assert(element.parentNode == _resourcesHost);
     element.remove();
   }
-
-  /// Disables the browser's context menu for this part of the DOM.
-  ///
-  /// By default, when a Flutter web app starts, the context menu is enabled.
-  ///
-  /// Can be re-enabled by calling [enableContextMenu].
-  void disableContextMenu() => _embeddingStrategy.disableContextMenu();
-
-  /// Enables the browser's context menu for this part of the DOM.
-  ///
-  /// By default, when a Flutter web app starts, the context menu is already
-  /// enabled. Typically, this method would be used after calling
-  /// [disableContextMenu] to first disable it.
-  void enableContextMenu() => _embeddingStrategy.enableContextMenu();
 }
 
 /// The embedder singleton.

@@ -9,6 +9,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+extern const NSString* kDefaultAssetPath;
+
 // Finds a bundle with the named `flutterFrameworkBundleID` within `searchURL`.
 //
 // Returns `nil` if the bundle cannot be found or if errors are encountered.
@@ -35,13 +37,18 @@ NSBundle* FLTFrameworkBundleWithIdentifier(NSString* flutterFrameworkBundleID);
 // Returns [NSBundle mainBundle] if the current running process is the application.
 NSBundle* FLTGetApplicationBundle();
 
+// Gets the flutter assets path directory from `bundle`.
+//
+// Returns `kDefaultAssetPath` if unable to find asset path from info.plist in `bundle`.
+NSString* FLTAssetPath(NSBundle* bundle);
+
 // Finds the Flutter asset directory from `bundle`.
 //
 // The raw path can be set by the application via info.plist's `FLTAssetsPath` key.
 // If the key is not set, `flutter_assets` is used as the raw path value.
 //
 // If no valid asset is found under the raw path, returns nil.
-NSURL* FLTAssetsURLFromBundle(NSBundle* bundle);
+NSString* FLTAssetsPathFromBundle(NSBundle* bundle);
 
 NS_ASSUME_NONNULL_END
 

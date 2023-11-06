@@ -70,9 +70,6 @@ std::ostream& operator<<(std::ostream& os, const DlPaint& paint) {
   if (paint.getMaskFilter()) {
     os << ", " << paint.getMaskFilter();
   }
-  if (paint.isDither()) {
-    os << ", dither: " << paint.isDither();
-  }
   if (paint.isInvertColors()) {
     os << ", invertColors: " << paint.isInvertColors();
   }
@@ -260,7 +257,7 @@ std::ostream& operator<<(std::ostream& os, const DlFilterMode& mode) {
 }
 
 std::ostream& operator<<(std::ostream& os, const DlColor& color) {
-  return os << "DlColor(" << std::hex << color.argb << std::dec << ")";
+  return os << "DlColor(" << std::hex << color.argb() << std::dec << ")";
 }
 
 std::ostream& operator<<(std::ostream& os, DlImageSampling sampling) {
@@ -285,6 +282,17 @@ static std::ostream& operator<<(std::ostream& os, const SkTextBlob* blob) {
     return os << "no text";
   }
   return os << "&SkTextBlob(ID: " << blob->uniqueID() << ", " << blob->bounds() << ")";
+}
+
+static std::ostream& operator<<(std::ostream& os,
+                                const impeller::TextFrame* frame) {
+  if (frame == nullptr) {
+    return os << "no text";
+  }
+  auto bounds = frame->GetBounds();
+  return os << "&TextFrame("
+            << bounds.GetLeft() << ", " << bounds.GetTop() << " => "
+            << bounds.GetRight() << ", " << bounds.GetBottom() << ")";
 }
 
 std::ostream& operator<<(std::ostream& os, const DlVertexMode& mode) {
@@ -350,9 +358,6 @@ std::ostream& DisplayListStreamDispatcher::out_array(std::string name,  // NOLIN
 
 void DisplayListStreamDispatcher::setAntiAlias(bool aa) {
   startl() << "setAntiAlias(" << aa << ");" << std::endl;
-}
-void DisplayListStreamDispatcher::setDither(bool dither) {
-  startl() << "setDither(" << dither << ");" << std::endl;
 }
 void DisplayListStreamDispatcher::setDrawStyle(DlDrawStyle style) {
   startl() << "setStyle(" << style << ");" << std::endl;
@@ -791,7 +796,7 @@ void DisplayListStreamDispatcher::drawVertices(const DlVertices* vertices,
                    out_array("indices", vertices->index_count(), vertices->indices())
                    << "), " << mode << ");" << std::endl;
 }
-void DisplayListStreamDispatcher::drawImage(const sk_sp<DlImage>& image,
+void DisplayListStreamDispatcher::drawImage(const sk_sp<DlImage> image,
                                             const SkPoint point,
                                             DlImageSampling sampling,
                                             bool render_with_attributes) {
@@ -801,7 +806,7 @@ void DisplayListStreamDispatcher::drawImage(const sk_sp<DlImage>& image,
                            << "with attributes: " << render_with_attributes
            << ");" << std::endl;
 }
-void DisplayListStreamDispatcher::drawImageRect(const sk_sp<DlImage>& image,
+void DisplayListStreamDispatcher::drawImageRect(const sk_sp<DlImage> image,
                                                 const SkRect& src,
                                                 const SkRect& dst,
                                                 DlImageSampling sampling,
@@ -815,7 +820,7 @@ void DisplayListStreamDispatcher::drawImageRect(const sk_sp<DlImage>& image,
                                << constraint
            << ");" << std::endl;
 }
-void DisplayListStreamDispatcher::drawImageNine(const sk_sp<DlImage>& image,
+void DisplayListStreamDispatcher::drawImageNine(const sk_sp<DlImage> image,
                                                 const SkIRect& center,
                                                 const SkRect& dst,
                                                 DlFilterMode filter,
@@ -827,7 +832,7 @@ void DisplayListStreamDispatcher::drawImageNine(const sk_sp<DlImage>& image,
                                << "with attributes: " << render_with_attributes
            << ");" << std::endl;
 }
-void DisplayListStreamDispatcher::drawAtlas(const sk_sp<DlImage>& atlas,
+void DisplayListStreamDispatcher::drawAtlas(const sk_sp<DlImage> atlas,
                                             const SkRSXform xform[],
                                             const SkRect tex[],
                                             const DlColor colors[],
@@ -845,20 +850,30 @@ void DisplayListStreamDispatcher::drawAtlas(const sk_sp<DlImage>& atlas,
            << ");" << std::endl;
 }
 void DisplayListStreamDispatcher::drawDisplayList(
-    const sk_sp<DisplayList>& display_list, SkScalar opacity) {
+    const sk_sp<DisplayList> display_list, SkScalar opacity) {
   startl() << "drawDisplayList("
            << "ID: " << display_list->unique_id() << ", "
            << "bounds: " << display_list->bounds() << ", "
            << "opacity: " << opacity
            << ");" << std::endl;
 }
-void DisplayListStreamDispatcher::drawTextBlob(const sk_sp<SkTextBlob>& blob,
+void DisplayListStreamDispatcher::drawTextBlob(const sk_sp<SkTextBlob> blob,
                                                SkScalar x,
                                                SkScalar y) {
   startl() << "drawTextBlob("
            << blob.get() << ", "
            << x << ", " << y << ");" << std::endl;
 }
+
+void DisplayListStreamDispatcher::drawTextFrame(
+    const std::shared_ptr<impeller::TextFrame>& text_frame,
+    SkScalar x,
+    SkScalar y) {
+  startl() << "drawTextFrame("
+    << text_frame.get() << ", "
+    << x << ", " << y << ");" << std::endl;
+}
+
 void DisplayListStreamDispatcher::drawShadow(const SkPath& path,
                                              const DlColor color,
                                              const SkScalar elevation,

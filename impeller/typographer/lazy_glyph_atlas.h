@@ -32,14 +32,16 @@ class LazyGlyphAtlas {
  private:
   std::shared_ptr<TypographerContext> typographer_context_;
 
-  FontGlyphPair::Set alpha_set_;
-  FontGlyphPair::Set color_set_;
+  FontGlyphMap alpha_glyph_map_;
+  FontGlyphMap color_glyph_map_;
   std::shared_ptr<GlyphAtlasContext> alpha_context_;
   std::shared_ptr<GlyphAtlasContext> color_context_;
   mutable std::unordered_map<GlyphAtlas::Type, std::shared_ptr<GlyphAtlas>>
       atlas_map_;
 
-  FML_DISALLOW_COPY_AND_ASSIGN(LazyGlyphAtlas);
+  LazyGlyphAtlas(const LazyGlyphAtlas&) = delete;
+
+  LazyGlyphAtlas& operator=(const LazyGlyphAtlas&) = delete;
 };
 
 }  // namespace impeller

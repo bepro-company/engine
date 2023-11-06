@@ -449,9 +449,10 @@ void PlatformConfiguration::CompletePlatformMessageResponse(
   response->Complete(std::make_unique<fml::DataMapping>(std::move(data)));
 }
 
-void PlatformConfigurationNativeApi::Render(Scene* scene) {
+void PlatformConfigurationNativeApi::Render(int64_t view_id, Scene* scene) {
   UIDartState::ThrowIfUIOperationsProhibited();
-  UIDartState::Current()->platform_configuration()->client()->Render(scene);
+  UIDartState::Current()->platform_configuration()->client()->Render(view_id,
+                                                                     scene);
 }
 
 void PlatformConfigurationNativeApi::SetNeedsReportTimings(bool value) {
@@ -629,6 +630,12 @@ void PlatformConfigurationNativeApi::RegisterBackgroundIsolate(
   auto weak_platform_message_handler =
       platform_message_handler->GetPlatformMessageHandler(root_isolate_token);
   dart_state->SetPlatformMessageHandler(weak_platform_message_handler);
+}
+
+void PlatformConfigurationNativeApi::SendChannelUpdate(const std::string& name,
+                                                       bool listening) {
+  UIDartState::Current()->platform_configuration()->client()->SendChannelUpdate(
+      name, listening);
 }
 
 double PlatformConfigurationNativeApi::GetScaledFontSize(

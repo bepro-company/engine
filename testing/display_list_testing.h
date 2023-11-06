@@ -17,16 +17,16 @@ bool DisplayListsEQ_Verbose(const DisplayList* a, const DisplayList* b);
 bool inline DisplayListsEQ_Verbose(const DisplayList& a, const DisplayList& b) {
   return DisplayListsEQ_Verbose(&a, &b);
 }
-bool inline DisplayListsEQ_Verbose(sk_sp<const DisplayList> a,
-                                   sk_sp<const DisplayList> b) {
+bool inline DisplayListsEQ_Verbose(const sk_sp<const DisplayList>& a,
+                                   const sk_sp<const DisplayList>& b) {
   return DisplayListsEQ_Verbose(a.get(), b.get());
 }
 bool DisplayListsNE_Verbose(const DisplayList* a, const DisplayList* b);
 bool inline DisplayListsNE_Verbose(const DisplayList& a, const DisplayList& b) {
   return DisplayListsNE_Verbose(&a, &b);
 }
-bool inline DisplayListsNE_Verbose(sk_sp<const DisplayList> a,
-                                   sk_sp<const DisplayList> b) {
+bool inline DisplayListsNE_Verbose(const sk_sp<const DisplayList>& a,
+                                   const sk_sp<const DisplayList>& b) {
   return DisplayListsNE_Verbose(a.get(), b.get());
 }
 
@@ -52,13 +52,12 @@ extern std::ostream& operator<<(std::ostream& os, const DlImage* image);
 
 class DisplayListStreamDispatcher final : public DlOpReceiver {
  public:
-  DisplayListStreamDispatcher(std::ostream& os,
-                              int cur_indent = 2,
-                              int indent = 2)
+  explicit DisplayListStreamDispatcher(std::ostream& os,
+                                       int cur_indent = 2,
+                                       int indent = 2)
       : os_(os), cur_indent_(cur_indent), indent_(indent) {}
 
   void setAntiAlias(bool aa) override;
-  void setDither(bool dither) override;
   void setDrawStyle(DlDrawStyle style) override;
   void setColor(DlColor color) override;
   void setStrokeWidth(SkScalar width) override;
@@ -115,22 +114,22 @@ class DisplayListStreamDispatcher final : public DlOpReceiver {
                   uint32_t count,
                   const SkPoint points[]) override;
   void drawVertices(const DlVertices* vertices, DlBlendMode mode) override;
-  void drawImage(const sk_sp<DlImage>& image,
+  void drawImage(const sk_sp<DlImage> image,
                  const SkPoint point,
                  DlImageSampling sampling,
                  bool render_with_attributes) override;
-  void drawImageRect(const sk_sp<DlImage>& image,
+  void drawImageRect(const sk_sp<DlImage> image,
                      const SkRect& src,
                      const SkRect& dst,
                      DlImageSampling sampling,
                      bool render_with_attributes,
                      SrcRectConstraint constraint) override;
-  void drawImageNine(const sk_sp<DlImage>& image,
+  void drawImageNine(const sk_sp<DlImage> image,
                      const SkIRect& center,
                      const SkRect& dst,
                      DlFilterMode filter,
                      bool render_with_attributes) override;
-  void drawAtlas(const sk_sp<DlImage>& atlas,
+  void drawAtlas(const sk_sp<DlImage> atlas,
                  const SkRSXform xform[],
                  const SkRect tex[],
                  const DlColor colors[],
@@ -139,11 +138,14 @@ class DisplayListStreamDispatcher final : public DlOpReceiver {
                  DlImageSampling sampling,
                  const SkRect* cull_rect,
                  bool render_with_attributes) override;
-  void drawDisplayList(const sk_sp<DisplayList>& display_list,
+  void drawDisplayList(const sk_sp<DisplayList> display_list,
                        SkScalar opacity) override;
-  void drawTextBlob(const sk_sp<SkTextBlob>& blob,
+  void drawTextBlob(const sk_sp<SkTextBlob> blob,
                     SkScalar x,
                     SkScalar y) override;
+  void drawTextFrame(const std::shared_ptr<impeller::TextFrame>& text_frame,
+                     SkScalar x,
+                     SkScalar y) override;
   void drawShadow(const SkPath& path,
                   const DlColor color,
                   const SkScalar elevation,

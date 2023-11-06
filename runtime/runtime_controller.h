@@ -658,7 +658,7 @@ class RuntimeController : public PlatformConfigurationClient {
   void ScheduleFrame() override;
 
   // |PlatformConfigurationClient|
-  void Render(Scene* scene) override;
+  void Render(int64_t view_id, Scene* scene) override;
 
   // |PlatformConfigurationClient|
   void UpdateSemantics(SemanticsUpdate* update) override;
@@ -682,6 +682,9 @@ class RuntimeController : public PlatformConfigurationClient {
   // |PlatformConfigurationClient|
   std::unique_ptr<std::vector<std::string>> ComputePlatformResolvedLocale(
       const std::vector<std::string>& supported_locale_data) override;
+
+  // |PlatformConfigurationClient|
+  void SendChannelUpdate(std::string name, bool listening) override;
 
   // |PlatformConfigurationClient|
   double GetScaledFontSize(double unscaled_font_size,

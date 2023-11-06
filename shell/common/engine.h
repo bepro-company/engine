@@ -29,7 +29,6 @@
 #include "flutter/shell/common/display_manager.h"
 #include "flutter/shell/common/platform_view.h"
 #include "flutter/shell/common/pointer_data_dispatcher.h"
-#include "flutter/shell/common/rasterizer.h"
 #include "flutter/shell/common/run_configuration.h"
 #include "flutter/shell/common/shell_io_manager.h"
 
@@ -293,6 +292,17 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
     ///        Flutter to the host platform (and its responses).
     virtual const std::shared_ptr<PlatformMessageHandler>&
     GetPlatformMessageHandler() const = 0;
+
+    //--------------------------------------------------------------------------
+    /// @brief      Invoked when a listener is registered on a platform channel.
+    ///
+    /// @param[in]  name             The name of the platform channel to which a
+    ///                              listener has been registered or cleared.
+    ///
+    /// @param[in]  listening        Whether the listener has been set (true) or
+    ///                              cleared (false).
+    ///
+    virtual void OnEngineChannelUpdate(std::string name, bool listening) = 0;
 
     //--------------------------------------------------------------------------
     /// @brief      Synchronously invokes platform-specific APIs to apply the
@@ -817,7 +827,7 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   void SetAccessibilityFeatures(int32_t flags);
 
   // |RuntimeDelegate|
-  void ScheduleFrame(bool regenerate_layer_tree) override;
+  void ScheduleFrame(bool regenerate_layer_trees) override;
 
   /// Schedule a frame with the default parameter of regenerating the layer
   /// tree.
@@ -949,7 +959,8 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   std::string DefaultRouteName() override;
 
   // |RuntimeDelegate|
-  void Render(std::unique_ptr<flutter::LayerTree> layer_tree,
+  void Render(int64_t view_id,
+              std::unique_ptr<flutter::LayerTree> layer_tree,
               float device_pixel_ratio) override;
 
   // |RuntimeDelegate|
@@ -976,6 +987,9 @@ class Engine final : public RuntimeDelegate, PointerDataDispatcher::Delegate {
   // |RuntimeDelegate|
   std::weak_ptr<PlatformMessageHandler> GetPlatformMessageHandler()
       const override;
+
+  // |RuntimeDelegate|
+  void SendChannelUpdate(std::string name, bool listening) override;
 
   // |RuntimeDelegate|
   double GetScaledFontSize(double unscaled_font_size,

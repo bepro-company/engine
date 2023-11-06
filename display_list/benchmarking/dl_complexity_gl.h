@@ -32,7 +32,7 @@ class DisplayListGLComplexityCalculator
  private:
   class GLHelper : public ComplexityCalculatorHelper {
    public:
-    GLHelper(unsigned int ceiling)
+    explicit GLHelper(unsigned int ceiling)
         : ComplexityCalculatorHelper(ceiling),
           save_layer_count_(0),
           draw_text_blob_count_(0) {}
@@ -56,20 +56,23 @@ class DisplayListGLComplexityCalculator
                     uint32_t count,
                     const SkPoint points[]) override;
     void drawVertices(const DlVertices* vertices, DlBlendMode mode) override;
-    void drawImage(const sk_sp<DlImage>& image,
+    void drawImage(const sk_sp<DlImage> image,
                    const SkPoint point,
                    DlImageSampling sampling,
                    bool render_with_attributes) override;
-    void drawImageNine(const sk_sp<DlImage>& image,
+    void drawImageNine(const sk_sp<DlImage> image,
                        const SkIRect& center,
                        const SkRect& dst,
                        DlFilterMode filter,
                        bool render_with_attributes) override;
-    void drawDisplayList(const sk_sp<DisplayList>& display_list,
+    void drawDisplayList(const sk_sp<DisplayList> display_list,
                          SkScalar opacity) override;
-    void drawTextBlob(const sk_sp<SkTextBlob>& blob,
+    void drawTextBlob(const sk_sp<SkTextBlob> blob,
                       SkScalar x,
                       SkScalar y) override;
+    void drawTextFrame(const std::shared_ptr<impeller::TextFrame>& text_frame,
+                       SkScalar x,
+                       SkScalar y) override;
     void drawShadow(const SkPath& path,
                     const DlColor color,
                     const SkScalar elevation,
