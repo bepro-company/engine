@@ -47,10 +47,10 @@ bool SceneContents::Render(const ContentContext& renderer,
   RenderTarget subpass_target;
   if (renderer.GetContext()->GetCapabilities()->SupportsOffscreenMSAA()) {
     subpass_target = RenderTarget::CreateOffscreenMSAA(
-        *renderer.GetContext(),            // context
-        *renderer.GetRenderTargetCache(),  // allocator
-        ISize(coverage.value().size),      // size
-        "SceneContents",                   // label
+        *renderer.GetContext(),             // context
+        *renderer.GetRenderTargetCache(),   // allocator
+        ISize(coverage.value().GetSize()),  // size
+        "SceneContents",                    // label
         RenderTarget::AttachmentConfigMSAA{
             .storage_mode = StorageMode::kDeviceTransient,
             .resolve_storage_mode = StorageMode::kDevicePrivate,
@@ -65,10 +65,10 @@ bool SceneContents::Render(const ContentContext& renderer,
     );
   } else {
     subpass_target = RenderTarget::CreateOffscreen(
-        *renderer.GetContext(),            // context
-        *renderer.GetRenderTargetCache(),  // allocator
-        ISize(coverage.value().size),      // size
-        "SceneContents",                   // label
+        *renderer.GetContext(),             // context
+        *renderer.GetRenderTargetCache(),   // allocator
+        ISize(coverage.value().GetSize()),  // size
+        "SceneContents",                    // label
         RenderTarget::AttachmentConfig{
             .storage_mode = StorageMode::kDevicePrivate,
             .load_action = LoadAction::kClear,
@@ -98,7 +98,7 @@ bool SceneContents::Render(const ContentContext& renderer,
   contents.SetGeometry(GetGeometry());
   contents.SetTexture(subpass_target.GetRenderTargetTexture());
   contents.SetEffectTransform(
-      Matrix::MakeScale(1 / entity.GetTransformation().GetScale()));
+      Matrix::MakeScale(1 / entity.GetTransform().GetScale()));
   return contents.Render(renderer, entity, pass);
 }
 

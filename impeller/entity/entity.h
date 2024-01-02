@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef FLUTTER_IMPELLER_ENTITY_ENTITY_H_
+#define FLUTTER_IMPELLER_ENTITY_ENTITY_H_
 
 #include <cstdint>
 
@@ -24,12 +25,12 @@ class Entity {
 
   enum class RenderingMode {
     /// In direct mode, the Entity's transform is used as the current
-    /// local-to-screen transformation matrix.
+    /// local-to-screen transform matrix.
     kDirect,
     /// In subpass mode, the Entity passed through the filter is in screen space
     /// rather than local space, and so some filters (namely,
     /// MatrixFilterContents) need to interpret the given EffectTransform as the
-    /// current transformation matrix.
+    /// current transform matrix.
     kSubpass,
   };
 
@@ -70,11 +71,13 @@ class Entity {
 
   ~Entity();
 
-  /// @brief  Get the global transformation matrix for this Entity.
-  const Matrix& GetTransformation() const;
+  Entity(Entity&&) = default;
 
-  /// @brief  Set the global transformation matrix for this Entity.
-  void SetTransformation(const Matrix& transformation);
+  /// @brief  Get the global transform matrix for this Entity.
+  const Matrix& GetTransform() const;
+
+  /// @brief  Set the global transform matrix for this Entity.
+  void SetTransform(const Matrix& transform);
 
   std::optional<Rect> GetCoverage() const;
 
@@ -113,8 +116,12 @@ class Entity {
 
   void SetCapture(Capture capture) const;
 
+  Entity Clone() const;
+
  private:
-  Matrix transformation_;
+  Entity(const Entity&) = default;
+
+  Matrix transform_;
   std::shared_ptr<Contents> contents_;
   BlendMode blend_mode_ = BlendMode::kSourceOver;
   uint32_t clip_depth_ = 0u;
@@ -122,3 +129,5 @@ class Entity {
 };
 
 }  // namespace impeller
+
+#endif  // FLUTTER_IMPELLER_ENTITY_ENTITY_H_
