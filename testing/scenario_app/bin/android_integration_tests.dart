@@ -3,10 +3,13 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:args/args.dart';
+import 'package:dir_contents_diff/dir_contents_diff.dart' show dirContentsDiff;
+import 'package:engine_repo_tools/engine_repo_tools.dart';
 import 'package:path/path.dart';
 import 'package:process/process.dart';
 import 'package:skia_gold_client/skia_gold_client.dart';
@@ -15,17 +18,143 @@ import 'utils/logs.dart';
 import 'utils/process_manager_extension.dart';
 import 'utils/screenshot_transformer.dart';
 
-const int tcpPort = 3001;
+void _withTemporaryCwd(String path, void Function() callback) {
+  final String originalCwd = Directory.current.path;
+  Directory.current = Directory(path).parent.path;
 
+  try {
+    callback();
+  } finally {
+    Directory.current = originalCwd;
+  }
+}
+
+// If you update the arguments, update the documentation in the README.md file.
 void main(List<String> args) async {
-  const ProcessManager pm = LocalProcessManager();
+  final Engine? engine = Engine.tryFindWithin();
   final ArgParser parser = ArgParser()
-    ..addOption('adb', help: 'absolute path to the adb tool', mandatory: true)
-    ..addOption('out-dir', help: 'out directory', mandatory: true);
+    ..addFlag(
+      'help',
+      help: 'Prints usage information',
+      negatable: false,
+    )
+    ..addOption(
+      'adb',
+      help: 'Absolute path to the adb tool',
+      defaultsTo: engine != null ? join(
+        engine.srcDir.path,
+        'third_party',
+        'android_tools',
+        'sdk',
+        'platform-tools',
+        'adb',
+      ) : null,
+    )
+    ..addOption(
+      'out-dir',
+      help: 'Out directory',
+      defaultsTo:
+        engine?.
+        outputs().
+        where((Output o) => basename(o.path.path).startsWith('android_')).
+        firstOrNull?.
+        path.path,
+    )
+    ..addOption(
+      'smoke-test',
+      help: 'runs a single test to verify the setup',
+    )
+    ..addFlag(
+      'use-skia-gold',
+      help: 'Use Skia Gold to compare screenshots.',
+      defaultsTo: isLuciEnv,
+    )
+    ..addFlag(
+      'enable-impeller',
+      help: 'Enable Impeller for the Android app.',
+    )
+    ..addOption('output-contents-golden',
+      help:
+        'Path to a file that will be used to check the contents of the output to make sure everything was created.')
+    ..addOption(
+      'impeller-backend',
+      help: 'The Impeller backend to use for the Android app.',
+      allowed: <String>['vulkan', 'opengles'],
+      defaultsTo: 'vulkan',
+    );
 
-  final ArgResults results = parser.parse(args);
-  final Directory outDir = Directory(results['out-dir'] as String);
-  final File adb = File(results['adb'] as String);
+  runZonedGuarded(
+    () async {
+      final ArgResults results = parser.parse(args);
+      if (results['help'] as bool) {
+        stdout.writeln(parser.usage);
+        return;
+      }
+
+      if (results['out-dir'] == null) {
+        panic(<String>['--out-dir is required']);
+      }
+      if (results['adb'] == null) {
+        panic(<String>['--adb is required']);
+      }
+
+      final Directory outDir = Directory(results['out-dir'] as String);
+      final File adb = File(results['adb'] as String);
+      final bool useSkiaGold = results['use-skia-gold'] as bool;
+      final String? smokeTest = results['smoke-test'] as String?;
+      final bool enableImpeller = results['enable-impeller'] as bool;
+      final String? contentsGolden = results['output-contents-golden'] as String?;
+      final _ImpellerBackend? impellerBackend = _ImpellerBackend.tryParse(results['impeller-backend'] as String?);
+      if (enableImpeller && impellerBackend == null) {
+        panic(<String>['invalid graphics-backend', results['impeller-backend'] as String? ?? '<null>']);
+      }
+      await _run(
+        outDir: outDir,
+        adb: adb,
+        smokeTestFullPath: smokeTest,
+        useSkiaGold: useSkiaGold,
+        enableImpeller: enableImpeller,
+        impellerBackend: impellerBackend,
+        contentsGolden: contentsGolden,
+      );
+      exit(0);
+    },
+    (Object error, StackTrace stackTrace) {
+      if (error is! Panic) {
+        stderr.writeln(error);
+        stderr.writeln(stackTrace);
+      }
+      exit(1);
+    },
+  );
+}
+
+const int _tcpPort = 3001;
+
+enum _ImpellerBackend {
+  vulkan,
+  opengles;
+
+  static _ImpellerBackend? tryParse(String? value) {
+    for (final _ImpellerBackend backend in _ImpellerBackend.values) {
+      if (backend.name == value) {
+        return backend;
+      }
+    }
+    return null;
+  }
+}
+
+Future<void> _run({
+  required Directory outDir,
+  required File adb,
+  required String? smokeTestFullPath,
+  required bool useSkiaGold,
+  required bool enableImpeller,
+  required _ImpellerBackend? impellerBackend,
+  required String? contentsGolden,
+}) async {
+  const ProcessManager pm = LocalProcessManager();
 
   if (!outDir.existsSync()) {
     panic(<String>['out-dir does not exist: $outDir', 'make sure to build the selected engine variant']);
@@ -58,7 +187,7 @@ void main(List<String> args) async {
   late  ServerSocket server;
   final List<Future<void>> pendingComparisons = <Future<void>>[];
   await step('Starting server...', () async {
-    server = await ServerSocket.bind(InternetAddress.anyIPv4, tcpPort);
+    server = await ServerSocket.bind(InternetAddress.anyIPv4, _tcpPort);
     stdout.writeln('listening on host ${server.address.address}:${server.port}');
     server.listen((Socket client) {
       stdout.writeln('client connected ${client.remoteAddress.address}:${client.remotePort}');
@@ -96,7 +225,7 @@ void main(List<String> args) async {
 
   final IOSink logcat = File(logcatPath).openWrite();
   try {
-    await step('Creating screenshot directory...', () async {
+    await step('Creating screenshot directory `$screenshotPath`...', () async {
       Directory(screenshotPath).createSync(recursive: true);
     });
 
@@ -130,11 +259,16 @@ void main(List<String> args) async {
         panic(<String>['could not get API level of the connected device']);
       }
       final String connectedDeviceAPILevel = (apiLevelProcessResult.stdout as String).trim();
-      log('using API level $connectedDeviceAPILevel');
+      final Map<String, String> dimensions = <String, String>{
+        'AndroidAPILevel': connectedDeviceAPILevel,
+        'GraphicsBackend': enableImpeller ? 'impeller-${impellerBackend!.name}' : 'skia',
+      };
+      log('using dimensions: ${json.encode(dimensions)}');
       skiaGoldClient = SkiaGoldClient(
         outDir,
         dimensions: <String, String>{
           'AndroidAPILevel': connectedDeviceAPILevel,
+          'GraphicsBackend': enableImpeller ? 'impeller-${impellerBackend!.name}' : 'skia',
         },
       );
     });
@@ -144,12 +278,16 @@ void main(List<String> args) async {
         await skiaGoldClient!.auth();
         log('skia gold client is available');
       } else {
-        log('skia gold client is unavailable');
+        if (useSkiaGold) {
+          panic(<String>['skia gold client is unavailable']);
+        } else {
+          log('skia gold client is unavaialble');
+        }
       }
     });
 
     await step('Reverse port...', () async {
-      final int exitCode = await pm.runAndForward(<String>[adb.path, 'reverse', 'tcp:3000', 'tcp:$tcpPort']);
+      final int exitCode = await pm.runAndForward(<String>[adb.path, 'reverse', 'tcp:3000', 'tcp:$_tcpPort']);
       if (exitCode != 0) {
         panic(<String>['could not forward port']);
       }
@@ -170,15 +308,29 @@ void main(List<String> args) async {
     });
 
     await step('Running instrumented tests...', () async {
-      final int exitCode = await pm.runAndForward(<String>[
+      final (int exitCode, StringBuffer out) = await pm.runAndCapture(<String>[
         adb.path,
         'shell',
         'am',
         'instrument',
-        '-w', 'dev.flutter.scenarios.test/dev.flutter.TestRunner',
+        '-w',
+        if (smokeTestFullPath != null)
+          '-e class $smokeTestFullPath',
+        'dev.flutter.scenarios.test/dev.flutter.TestRunner',
+        if (enableImpeller)
+          '-e enable-impeller',
+        if (impellerBackend != null)
+          '-e impeller-backend ${impellerBackend.name}',
       ]);
       if (exitCode != 0) {
-        panic(<String>['could not install test apk']);
+        panic(<String>['instrumented tests failed to run']);
+      }
+      // Unfortunately adb shell am instrument does not return a non-zero exit
+      // code when tests fail, but it does seem to print "FAILURES!!!" to
+      // stdout, so we can use that as a signal that something went wrong.
+      if (out.toString().contains('FAILURES!!!')) {
+        stdout.write(out);
+        panic(<String>['1 or more tests failed']);
       }
     });
   } finally {
@@ -219,10 +371,22 @@ void main(List<String> args) async {
       await Future.wait(pendingComparisons);
     });
 
+    if (contentsGolden != null) {
+      // Check the output here.
+      await step('Check output files...', () async {
+        // TODO(gaaclarke): We should move this into dir_contents_diff.
+        _withTemporaryCwd(contentsGolden, () {
+          final int exitCode = dirContentsDiff(basename(contentsGolden), screenshotPath);
+          if (exitCode != 0) {
+            panic(<String>['Output contents incorrect.']);
+          }
+        });
+      });
+    }
+
     await step('Flush logcat...', () async {
       await logcat.flush();
+      await logcat.close();
     });
-
-    exit(0);
   }
 }
